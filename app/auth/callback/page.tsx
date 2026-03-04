@@ -1,17 +1,27 @@
 "use client";
 
-import { useEffect } from "react";
+// no need to prerender this route; it just handles the OAuth fragment
+// on the client and then redirects.  marking it dynamic keeps the
+// build from touching Supabase during export.
+export const dynamic = "force-dynamic";
+
+import { useEffect, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 
 export default function AuthCallback() {
   const router = useRouter();
 
+  const supabase = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) return null;
+    return createClient(url, key);
+  }, []);
+
   useEffect(() => {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    if (!supabase) return;
 
     // Supabase will parse the URL fragment and store the session in local
     // storage / cookies.  After the promise resolves we can redirect to the
