@@ -1,6 +1,7 @@
 import { ReactNode } from "react"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
+import Navbar from "@/components/admin/Navbar"
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient()
@@ -16,6 +17,12 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
   if (!profile?.is_superadmin) redirect("/")
 
-  return <>{children}</>
+  return (
+    <div>
+      <Navbar />
+      <main style={{ padding: "40px" }}>
+        {children}
+      </main>
+    </div>
+  )
 }
-
