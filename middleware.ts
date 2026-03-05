@@ -1,74 +1,109 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createServerClient, type CookieOptions } from "@supabase/ssr"
+import { NextResponse, type NextRequest } from "next/server"
 
-// paths that should bypass the guard
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/denied"];
+export async function middleware(request: NextRequest) {
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
 
-function isPublic(pathname: string) {
-  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
-    return true;
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return request.cookies.get(name)?.value
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          request.cookies.set({
+            name,
+            value,
+            ...options,
+          })
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          })
+          response.cookies.set({
+            name,
+            value,
+            ...options,
+          })
+        },
+        remove(name: string, options: CookieOptions) {
+          request.cookies.set({
+            name,
+            value: "",
+            ...options,
+          })
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          })
+          response.cookies.set({
+            name,
+            value: "",
+            ...options,
+          })
+        },
+      },
+    }
+  )
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  const pathname = request.nextUrl.pathname
+
+  // Public paths
+  if (pathname === "/login" || pathname === "/auth/callback" || pathname === "/denied") {
+    return response
   }
-  // allow Next.js internals and static files
-  return pathname.startsWith("/_next") || pathname.startsWith("/static");
-}
 
-export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
-
-  if (isPublic(pathname)) {
-    return NextResponse.next();
+  // Allow static files and Next.js internals
+  if (pathname.startsWith("/_next") || pathname.startsWith("/static") || pathname === "/favicon.ico") {
+    return response
   }
 
-  try {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!url || !key) {
-      console.error("middleware: missing supabase env vars");
-      throw new Error("supabase config unavailable");
+  // Protect admin routes
+  if (pathname.startsWith("/admin")) {
+    if (!session) {
+      const url = request.nextUrl.clone()
+      url.pathname = "/login"
+      return NextResponse.redirect(url)
     }
 
-    const supabase = createClient(url, key);
-
-    const accessToken = req.cookies.get("sb-access-token")?.value;
-    if (!accessToken) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/login";
-      return NextResponse.redirect(url);
-    }
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser(accessToken);
-    if (userError || !user) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/login";
-      return NextResponse.redirect(url);
-    }
-
-    const { data: profile, error: profileError } = await supabase
+    // Check for superadmin if necessary, as per the existing project structure
+    const { data: profile } = await supabase
       .from("profiles")
       .select("is_superadmin")
-      .eq("id", user.id)
-      .single();
+      .eq("id", session.user.id)
+      .single()
 
-    if (profileError || !profile?.is_superadmin) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/denied";
-      return NextResponse.redirect(url);
+    if (!profile?.is_superadmin) {
+      const url = request.nextUrl.clone()
+      url.pathname = "/denied"
+      return NextResponse.redirect(url)
     }
-
-    return NextResponse.next();
-  } catch (err) {
-    console.error("middleware invocation failed", err);
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
   }
+
+  return response
 }
 
-// tell Next which paths the middleware should run for
 export const config = {
-  matcher: "/((?!_next/static|_next/image|favicon.ico).*)",
-};
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * Feel free to modify this pattern to include more paths.
+     */
+    "/((?!_next/static|_next/image|favicon.ico).*)",
+  ],
+}

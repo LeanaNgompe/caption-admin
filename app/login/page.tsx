@@ -1,39 +1,24 @@
-"use client";
+"use client"
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
-
-export const dynamic = "force-dynamic";
+import { createBrowserClient } from "@/lib/supabase/client"
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const supabase = createBrowserClient()
 
-  // Redirect if already signed in
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) router.replace("/hello");
-    });
-  }, [router]);
-
-  const signInWithGoogle = async () => {
-    setLoading(true);
+  const handleLogin = async () => {
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${location.origin}/auth/callback` },
-    });
-  };
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
+  }
 
   return (
-    <div className="flex items-center justify-center h-screen">
-      <button
-        onClick={signInWithGoogle}
-        className="px-4 py-2 bg-blue-600 text-white rounded"
-        disabled={loading}
-      >
-        {loading ? "Redirecting..." : "Continue with Google"}
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+      <button onClick={handleLogin} style={{ padding: "10px 20px", fontSize: "16px", cursor: "pointer" }}>
+        Continue with Google
       </button>
     </div>
-  );
+  )
 }
