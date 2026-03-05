@@ -7,8 +7,8 @@ export default async function StatsPanel() {
   const { count: imageCount } = await supabase.from("images").select("*", { count: "exact", head: true })
   const { count: captionCount } = await supabase.from("captions").select("*", { count: "exact", head: true })
 
-  const { data: recentImages } = await supabase.from("images").select("*").order("created_at", { ascending: false }).limit(5)
-  const { data: recentCaptions } = await supabase.from("captions").select("*").order("created_at", { ascending: false }).limit(5)
+  const { data: recentImages } = await supabase.from("images").select("*").order("created_datetime_utc", { ascending: false }).limit(5)
+  const { data: recentCaptions } = await supabase.from("captions").select("*").order("created_datetime_utc", { ascending: false }).limit(5)
 
   return (
     <div style={{ padding: "20px", border: "1px solid #ccc", marginBottom: "20px" }}>
@@ -23,7 +23,7 @@ export default async function StatsPanel() {
           <h3>Recent Images</h3>
           <ul>
             {recentImages?.map((img) => (
-              <li key={img.id}>{img.image_url}</li>
+              <li key={img.id}>{img.url}</li>
             ))}
           </ul>
         </div>
@@ -31,7 +31,7 @@ export default async function StatsPanel() {
           <h3>Recent Captions</h3>
           <ul>
             {recentCaptions?.map((cap) => (
-              <li key={cap.id}>{cap.caption_text}</li>
+              <li key={cap.id}>{cap.content}</li>
             ))}
           </ul>
         </div>
