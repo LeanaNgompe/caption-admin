@@ -350,22 +350,24 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [hoveredNode, setHoveredNode] = useState<any>(null)
+  const [selectedNode, setSelectedNode] = useState<any>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || !data.nodes.length) return
 
     const width = containerRef.current.clientWidth
-    const height = 500
+    const height = containerRef.current.clientHeight || 500
 
     const svg = d3.select(svgRef.current)
     svg.selectAll("*").remove()
 
     const simulation = d3
       .forceSimulation(data.nodes)
-      .force("link", d3.forceLink(data.links).id((d: any) => d.id).distance(120))
-      .force("charge", d3.forceManyBody().strength(-300))
-      .force("collide", d3.forceCollide().radius(30))
+      // shorter distance for tighter clusters
+      .force("link", d3.forceLink(data.links).id((d: any) => d.id).distance(60))
+      .force("charge", d3.forceManyBody().strength(-150))
+      .force("collide", d3.forceCollide().radius(20))
       .force("center", d3.forceCenter(width / 2, height / 2))
 
     const g = svg.append("g")
@@ -394,6 +396,11 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
       })
       .on("mouseleave", () => {
         setHoveredNode(null)
+      })
+      .on("click", (event, d) => {
+        // prevent zoom/pan from triggering
+        event.stopPropagation()
+        setSelectedNode(d)
       })
       .call(
         d3
@@ -445,7 +452,7 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
       ref={containerRef}
       className="w-full h-full relative border rounded-lg bg-slate-50 overflow-hidden min-h-[500px]"
     >
-      <svg ref={svgRef} className="w-full h-[500px] cursor-move" />
+      <svg ref={svgRef} className="w-full h-full cursor-move" />
 
       {hoveredNode && (
         <div
@@ -474,6 +481,34 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
                     {hoveredNode.likes} likes
                   </span>
                 </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* selected node detail box */}
+      {selectedNode && (
+        <div className="absolute inset-0 flex items-center justify-center z-40 pointer-events-none">
+          <div className="bg-white p-4 rounded-lg shadow-2xl border border-gray-300 max-w-md w-full pointer-events-auto">
+            <button
+              className="text-gray-500 hover:text-gray-800 float-right"
+              onClick={() => setSelectedNode(null)}
+            >
+              ×
+            </button>
+            {selectedNode.type === "image" ? (
+              <img
+                src={selectedNode.url}
+                className="w-full object-contain max-h-[80vh]"
+              />
+            ) : (
+              <div className="space-y-2">
+                <p className="text-lg italic text-gray-800">
+                  "{selectedNode.content}"
+                </p>
+                <p className="text-sm text-gray-500">
+                  {selectedNode.likes} likes
+                </p>
               </div>
             )}
           </div>
