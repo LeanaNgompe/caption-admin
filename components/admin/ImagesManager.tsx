@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { createBrowserClient } from "@/lib/supabase/client"
 
 interface Image {
@@ -10,7 +10,7 @@ interface Image {
 }
 
 export default function ImagesManager() {
-  const supabase = createBrowserClient()
+  const supabase = useMemo(() => createBrowserClient(), [])
   const [images, setImages] = useState<Image[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -18,10 +18,16 @@ export default function ImagesManager() {
   const [editingImage, setEditingImage] = useState<Image | null>(null)
 
   const fetchImages = useCallback(async () => {
+    console.log("Fetching images...")
     setLoading(true)
     const { data, error } = await supabase.from("images").select("*").order("created_datetime_utc", { ascending: false })
-    if (error) setError(error.message)
-    else setImages((data as Image[]) || [])
+    if (error) {
+      console.error("Fetch error:", error)
+      setError(error.message)
+    } else {
+      console.log("Fetched images:", data?.length)
+      setImages((data as Image[]) || [])
+    }
     setLoading(false)
   }, [supabase])
 
@@ -31,10 +37,21 @@ export default function ImagesManager() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newUrl) return
-    const { error } = await supabase.from("images").insert([{ url: newUrl }])
-    if (error) alert(error.message)
-    else {
+    console.log("handleCreate triggered with URL:", newUrl)
+    if (!newUrl) {
+      console.warn("No URL provided")
+      return
+    }
+    
+    console.log("Inserting to Supabase...")
+    const { data, error } = await supabase.from("images").insert([{ url: newUrl }]).select()
+    
+    if (error) {
+      console.error("Create error:", error)
+      alert("Create failed: " + error.message + " (Code: " + error.code + ")")
+    } else {
+      console.log("Create successful:", data)
+      alert("Image created successfully!")
       setNewUrl("")
       fetchImages()
     }
@@ -42,17 +59,27 @@ export default function ImagesManager() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure?")) return
+    console.log("Deleting ID:", id)
     const { error } = await supabase.from("images").delete().eq("id", id)
-    if (error) alert(error.message)
-    else fetchImages()
+    if (error) {
+      console.error("Delete error:", error)
+      alert(error.message)
+    } else {
+      console.log("Delete successful")
+      fetchImages()
+    }
   }
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editingImage) return
+    console.log("Updating ID:", editingImage.id, "with URL:", editingImage.url)
     const { error } = await supabase.from("images").update({ url: editingImage.url }).eq("id", editingImage.id)
-    if (error) alert(error.message)
-    else {
+    if (error) {
+      console.error("Update error:", error)
+      alert(error.message)
+    } else {
+      console.log("Update successful")
       setEditingImage(null)
       fetchImages()
     }
