@@ -334,18 +334,21 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
 
     const width = containerRef.current.clientWidth
     const height = 500
+
     const svg = d3.select(svgRef.current)
     svg.selectAll("*").remove()
 
-    const simulation = d3.forceSimulation(data.nodes)
-      .force("link", d3.forceLink(data.links).id((d: any) => d.id).distance(120).strength(1))
+    const simulation = d3
+      .forceSimulation(data.nodes)
+      .force("link", d3.forceLink(data.links).id((d: any) => d.id).distance(120))
       .force("charge", d3.forceManyBody().strength(-300))
       .force("collide", d3.forceCollide().radius(30))
       .force("center", d3.forceCenter(width / 2, height / 2))
 
     const g = svg.append("g")
 
-    const link = g.append("g")
+    const link = g
+      .append("g")
       .attr("stroke", "#94a3b8")
       .attr("stroke-opacity", 0.4)
       .selectAll("line")
@@ -353,14 +356,15 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
       .join("line")
       .attr("stroke-width", 1.5)
 
-    const node = g.append("g")
+    const node = g
+      .append("g")
       .selectAll("g")
       .data(data.nodes)
       .join("g")
       .attr("cursor", "pointer")
       .on("mouseenter", (event, d) => {
         setHoveredNode(d)
-        setTooltipPos({ x: event.pageX, y: event.y })
+        setTooltipPos({ x: event.pageX, y: event.pageY })
       })
       .on("mousemove", (event) => {
         setTooltipPos({ x: event.pageX, y: event.pageY })
@@ -368,28 +372,33 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
       .on("mouseleave", () => {
         setHoveredNode(null)
       })
-      .call(d3.drag<any, any>()
-        .on("start", (event, d) => {
-          if (!event.active) simulation.alphaTarget(0.3).restart()
-          d.fx = d.x
-          d.fy = d.y
-        })
-        .on("drag", (event, d) => {
-          d.fx = event.x
-          d.fy = event.y
-        })
-        .on("end", (event, d) => {
-          if (!event.active) simulation.alphaTarget(0)
-          d.fx = null
-          d.fy = null
-        }))
+      .call(
+        d3
+          .drag<any, any>()
+          .on("start", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0.3).restart()
+            d.fx = d.x
+            d.fy = d.y
+          })
+          .on("drag", (event, d) => {
+            d.fx = event.x
+            d.fy = event.y
+          })
+          .on("end", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0)
+            d.fx = null
+            d.fy = null
+          })
+      )
 
-    node.append("circle")
-      .attr("r", d => d.type === 'image' ? 14 : Math.max(6, Math.min(18, (d.likes || 0) / 2)))
-      .attr("fill", d => d.type === 'image' ? "#3b82f6" : "#fbbf24")
+    node
+      .append("circle")
+      .attr("r", (d: any) =>
+        d.type === "image" ? 14 : Math.max(6, Math.min(18, (d.likes || 0) / 2))
+      )
+      .attr("fill", (d: any) => (d.type === "image" ? "#3b82f6" : "#fbbf24"))
       .attr("stroke", "#fff")
       .attr("stroke-width", 2)
-      .attr("class", "transition-all duration-200 hover:stroke-gray-400")
 
     simulation.on("tick", () => {
       link
@@ -401,34 +410,46 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
       node.attr("transform", (d: any) => `translate(${d.x},${d.y})`)
     })
 
-    svg.call(d3.zoom<SVGSVGElement, unknown>().on("zoom", (event) => {
-      g.attr("transform", event.transform)
-    }))
-
+    svg.call(
+      d3.zoom<SVGSVGElement, unknown>().on("zoom", (event) => {
+        g.attr("transform", event.transform)
+      })
+    )
   }, [data])
 
   return (
-    <div ref={containerRef} className="w-full h-full relative border rounded-lg bg-slate-50 overflow-hidden min-h-[500px]">
+    <div
+      ref={containerRef}
+      className="w-full h-full relative border rounded-lg bg-slate-50 overflow-hidden min-h-[500px]"
+    >
       <svg ref={svgRef} className="w-full h-[500px] cursor-move" />
-      
-      {/* Interaction Tooltip */}
+
       {hoveredNode && (
-        <div 
+        <div
           className="fixed z-50 pointer-events-none transform -translate-x-1/2 -translate-y-full mb-4"
           style={{ left: tooltipPos.x, top: tooltipPos.y }}
         >
           <div className="bg-white p-2 rounded-lg shadow-xl border border-gray-200 max-w-[250px]">
-            {hoveredNode.type === 'image' ? (
+            {hoveredNode.type === "image" ? (
               <div className="space-y-2">
-                <img src={hoveredNode.url} alt="Meme Preview" className="w-full h-auto rounded-md object-contain max-h-[200px]" />
-                <p className="text-[10px] text-gray-400 uppercase font-bold text-center">Meme Node</p>
+                <img
+                  src={hoveredNode.url}
+                  className="w-full rounded-md object-contain max-h-[200px]"
+                />
+                <p className="text-[10px] text-gray-400 uppercase font-bold text-center">
+                  Meme Node
+                </p>
               </div>
             ) : (
               <div className="space-y-1">
-                <p className="text-sm text-gray-800 leading-tight font-medium italic">"{hoveredNode.content}"</p>
-                <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
-                  <span className="text-[10px] font-bold text-blue-500 uppercase">Caption</span>
-                  <span className="text-[10px] text-gray-500">{hoveredNode.likes} likes</span>
+                <p className="text-sm italic text-gray-800">
+                  "{hoveredNode.content}"
+                </p>
+                <div className="flex justify-between text-[10px] mt-2 pt-2 border-t">
+                  <span className="font-bold text-blue-500">Caption</span>
+                  <span className="text-gray-500">
+                    {hoveredNode.likes} likes
+                  </span>
                 </div>
               </div>
             )}
@@ -436,9 +457,16 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
         </div>
       )}
 
-      <div className="absolute bottom-4 right-4 flex gap-4 text-[10px] font-bold text-gray-500 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-full border shadow-sm">
-        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500 shadow-sm" /> MEME</div>
-        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-amber-400 shadow-sm" /> CAPTION</div>
+      <div className="absolute bottom-4 right-4 flex gap-4 text-[10px] font-bold text-gray-500 bg-white/90 px-3 py-2 rounded-full border shadow-sm">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-blue-500" />
+          MEME
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-amber-400" />
+          CAPTION
+        </div>
       </div>
     </div>
   )
