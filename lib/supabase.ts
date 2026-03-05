@@ -5,10 +5,6 @@ import { cookies } from "next/headers";
 // options since the global `fetch` is already available in Node; the
 // resulting instance will simply talk to Supabase using standard HTTP.
 export function createServerSupabaseClient() {
-  // these values are declared with the NEXT_PUBLIC_ prefix in
-  // `.env.local`, but they are still available on the server.  we
-  // can read the public names here to avoid having to duplicate
-  // configuration.
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 

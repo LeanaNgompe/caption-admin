@@ -14,20 +14,15 @@ function isPublic(pathname: string) {
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  console.log("middleware invoked for", pathname);
 
   if (isPublic(pathname)) {
     return NextResponse.next();
   }
 
   try {
-    // build a minimal supabase client to inspect the session.  we keep
-    // the same environment variable names used elsewhere, but guard
-    // against them being undefined so the middleware doesn't explode.
-    // Uncomment to force an error and see how Next handles it:
-    // throw new Error("artificial test error");
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
     if (!url || !key) {
       console.error("middleware: missing supabase env vars");
       throw new Error("supabase config unavailable");
@@ -37,7 +32,6 @@ export async function middleware(req: NextRequest) {
 
     const accessToken = req.cookies.get("sb-access-token")?.value;
     if (!accessToken) {
-      // no session, redirect to login
       const url = req.nextUrl.clone();
       url.pathname = "/login";
       return NextResponse.redirect(url);
@@ -53,7 +47,6 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // check superadmin flag in profile table
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("is_superadmin")
@@ -68,11 +61,7 @@ export async function middleware(req: NextRequest) {
 
     return NextResponse.next();
   } catch (err) {
-    // log full error for debugging; middleware failures produce a
-    // generic 500, so we want visibility in the logs.
     console.error("middleware invocation failed", err);
-
-    // fall back to redirecting to login rather than throwing
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
