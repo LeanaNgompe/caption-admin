@@ -1,27 +1,33 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { createBrowserClient } from "@/lib/supabase/client"
+
+interface Image {
+  id: string;
+  image_url: string;
+  created_at: string;
+}
 
 export default function ImagesManager() {
   const supabase = createBrowserClient()
-  const [images, setImages] = useState<any[]>([])
+  const [images, setImages] = useState<Image[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [newImageUrl, setNewImageUrl] = useState("")
-  const [editingImage, setEditingImage] = useState<any>(null)
+  const [editingImage, setEditingImage] = useState<Image | null>(null)
 
-  useEffect(() => {
-    fetchImages()
-  }, [])
-
-  const fetchImages = async () => {
+  const fetchImages = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase.from("images").select("*").order("created_at", { ascending: false })
     if (error) setError(error.message)
-    else setImages(data || [])
+    else setImages((data as Image[]) || [])
     setLoading(false)
-  }
+  }, [supabase])
+
+  useEffect(() => {
+    fetchImages()
+  }, [fetchImages])
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
