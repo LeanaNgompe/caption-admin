@@ -37,7 +37,7 @@ export default function LoginPage() {
     try {
       await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: "/auth/callback" },
+        options: { redirectTo:  `${location.origin}/auth/callback` }, // callback will redirect to hello page
       });
     } catch (err) {
       console.error("login error", err);
@@ -48,7 +48,7 @@ export default function LoginPage() {
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) router.replace("/");
+      if (session?.user) router.replace("/hello");
     });
   }, [router, supabase]);
 
