@@ -141,39 +141,41 @@ export default function StatsPanel() {
         const birthRateGrouped = d3.rollups(
           imageDates || [],
           v => v.length,
-          d => d.created_datetime_utc.split('T')[0]
-        ).map(([date, count]) => ({ date, count }))
+          d => d.created_datetime_utc?.split('T')[0]
+        ).filter(([date]) => date)
+        .map(([date, count]) => ({ date, count }))
         .sort((a, b) => a.date.localeCompare(b.date))
 
-        // Humor Flavor Popularity
+        // Humor Flavor Popularity (Using 'slug' as discovered in schema)
         const { data: captionFlavors } = await supabase
           .from("captions")
-          .select("humor_flavor_id, humor_flavors(name)")
+          .select("humor_flavor_id, humor_flavors(slug)")
           .not("humor_flavor_id", "is", null)
         
         const flavorGrouped = d3.rollups(
           captionFlavors || [],
           v => v.length,
-          d => (d as any).humor_flavors?.name || "Unknown"
+          d => (d as any).humor_flavors?.slug || "Unknown"
         ).map(([name, count], i) => ({
-          name,
+          name: name.replace(/-/g, ' '), // Prettify slug
           value: count,
           fill: d3.schemeTableau10[i % 10]
         }))
 
         // AI Model Performance
+        // We join captions with humor_flavor_id to show engagement by "flavor" since model link is complex
         const { data: modelPerf } = await supabase
-          .from("llm_model_responses")
-          .select("model_id, llm_models(name), captions(like_count)")
+          .from("captions")
+          .select("like_count, humor_flavors(slug)")
         
         const modelGrouped = d3.rollups(
           modelPerf || [],
-          v => d3.mean(v, d => (d as any).captions?.like_count || 0),
-          d => (d as any).llm_models?.name || "Unknown"
+          v => d3.mean(v, d => (d as any).like_count || 0),
+          d => (d as any).humor_flavors?.slug || "Generic"
         ).map(([name, avgLikes]) => ({
-          name,
+          name: name.replace(/-/g, ' '),
           avgLikes: Math.round((avgLikes || 0) * 10) / 10
-        }))
+        })).sort((a, b) => b.avgLikes - a.avgLikes).slice(0, 8)
 
         setAnalyticsData({
           memeBirthRate: birthRateGrouped,
