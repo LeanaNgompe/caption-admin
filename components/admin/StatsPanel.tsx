@@ -118,27 +118,50 @@ export default function StatsPanel() {
         })
 
         // 5. Network Visualization Data
-        const { data: networkNodes } = await supabase.from("captions").select("id, content, like_count, image_id").limit(100)
-        const { data: allImages } = await supabase.from("images").select("id, url").limit(30)
+        const { data: networkNodes } = await supabase
+          .from("captions")
+          .select("id, content, like_count, image_id")
+          // only pull the most recent 100 captions to keep the graph responsive
+          .limit(100)
+
+        // gather the image ids that are actually referenced by the captions
+        const imageIds = (networkNodes || [])
+          .map((c: any) => c.image_id)
+          .filter(Boolean)
+
+        // fetch the corresponding images instead of an arbitrary slice of the table
+        const { data: allImages } = await supabase
+          .from("images")
+          .select("id, url")
+          .in("id", imageIds)
 
         const nodes: any[] = []
         const links: any[] = []
-        const imageNodeIds = new Set()
 
-        allImages?.forEach(img => {
-          nodes.push({ id: img.id, type: 'image', url: img.url })
-          imageNodeIds.add(img.id)
+        // keep a set of string ids so we don't accidentally compare numbers to strings
+        const imageNodeIds = new Set<string>()
+
+        allImages?.forEach((img: any) => {
+          const id = String(img.id)
+          nodes.push({ id, type: "image", url: img.url })
+          imageNodeIds.add(id)
         })
 
-        networkNodes?.forEach(cap => {
+        networkNodes?.forEach((cap: any) => {
+          const capId = String(cap.id)
+          const imgId = cap.image_id ? String(cap.image_id) : null
+
           // Add caption node
-          nodes.push({ id: cap.id, type: 'caption', content: cap.content, likes: cap.like_count })
-          
-          // Connect to image if the image exists in our image set
-          if (imageNodeIds.has(cap.image_id)) {
-            links.push({ source: cap.id, target: cap.image_id })
+          nodes.push({ id: capId, type: "caption", content: cap.content, likes: cap.like_count })
+
+          // Connect to image if we actually fetched it
+          if (imgId && imageNodeIds.has(imgId)) {
+            links.push({ source: capId, target: imgId })
           }
         })
+
+        // optional debugging during development
+        // console.log({ networkNodes, allImages, nodes, links })
 
         setNetworkData({ nodes, links })
 
