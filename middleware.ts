@@ -61,7 +61,7 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
   // Public paths
-  if (pathname === "/login" || pathname === "/auth/callback" || pathname === "/denied") {
+  if (pathname === "/login" || pathname === "/auth/callback" || pathname === "/denied" || pathname === "/auth/signout") {
     return response
   }
 
