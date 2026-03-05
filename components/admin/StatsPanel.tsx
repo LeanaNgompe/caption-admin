@@ -118,50 +118,32 @@ export default function StatsPanel() {
         })
 
         // 5. Network Visualization Data
-        const { data: networkNodes } = await supabase
-          .from("captions")
-          .select("id, content, like_count, image_id")
-          // only pull the most recent 100 captions to keep the graph responsive
-          .limit(100)
-
-        // gather the image ids that are actually referenced by the captions
-        const imageIds = (networkNodes || [])
-          .map((c: any) => c.image_id)
-          .filter(Boolean)
-
-        // fetch the corresponding images instead of an arbitrary slice of the table
-        const { data: allImages } = await supabase
-          .from("images")
-          .select("id, url")
-          .in("id", imageIds)
+        const { data: networkNodes } = await supabase.from("captions").select("id, content, like_count, image_id").limit(100)
+        
+        // Gather valid image IDs
+        const imageIds = (networkNodes || []).map((c: any) => c.image_id).filter(Boolean)
+        
+        // Fetch corresponding images
+        const { data: allImages } = await supabase.from("images").select("id, url").in("id", imageIds)
 
         const nodes: any[] = []
         const links: any[] = []
-
-        // keep a set of string ids so we don't accidentally compare numbers to strings
         const imageNodeIds = new Set<string>()
 
-        allImages?.forEach((img: any) => {
-          const id = String(img.id)
-          nodes.push({ id, type: "image", url: img.url })
-          imageNodeIds.add(id)
+        allImages?.forEach(img => {
+          nodes.push({ id: img.id, type: 'image', url: img.url })
+          imageNodeIds.add(img.id)
         })
 
-        networkNodes?.forEach((cap: any) => {
-          const capId = String(cap.id)
-          const imgId = cap.image_id ? String(cap.image_id) : null
-
+        networkNodes?.forEach(cap => {
           // Add caption node
-          nodes.push({ id: capId, type: "caption", content: cap.content, likes: cap.like_count })
-
-          // Connect to image if we actually fetched it
-          if (imgId && imageNodeIds.has(imgId)) {
-            links.push({ source: capId, target: imgId })
+          nodes.push({ id: cap.id, type: 'caption', content: cap.content, likes: cap.like_count })
+          
+          // Connect to image if the image exists in our image set
+          if (cap.image_id && imageNodeIds.has(cap.image_id)) {
+            links.push({ source: cap.id, target: cap.image_id })
           }
         })
-
-        // optional debugging during development
-        // console.log({ networkNodes, allImages, nodes, links })
 
         setNetworkData({ nodes, links })
 
@@ -176,45 +158,56 @@ export default function StatsPanel() {
     fetchData()
   }, [supabase])
 
-  if (loading) return <div className="p-8 text-center text-gray-500 animate-pulse">Loading Analytics Dashboard...</div>
-  if (error) return <div className="p-8 text-red-500 text-center">Error: {error}</div>
+  if (loading) return <div className="p-12 text-center text-slate-400 font-medium animate-pulse">Loading Dashboard...</div>
+  if (error) return <div className="p-8 text-red-500 text-center glass-panel">Error: {error}</div>
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto pb-12">
+    <div className="space-y-8 animate-fade-in-up">
       
       {/* --- QUICK STATS --- */}
-      <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-        <h2 className="text-xl font-bold mb-4 text-gray-800">Quick Stats</h2>
+      <div className="glass-panel p-8">
+        <h2 className="text-2xl font-bold mb-6 text-slate-800 tracking-tight">Overview</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <div className="text-sm text-gray-500">Total Users</div>
-            <div className="text-2xl font-bold text-gray-900">{counts.users}</div>
+          <div className="p-6 bg-slate-50/50 rounded-2xl border border-slate-100 backdrop-blur-sm">
+            <div className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-2">Total Users</div>
+            <div className="text-4xl font-bold text-slate-900 tracking-tight">{counts.users.toLocaleString()}</div>
           </div>
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <div className="text-sm text-gray-500">Total Images</div>
-            <div className="text-2xl font-bold text-gray-900">{counts.images}</div>
+          <div className="p-6 bg-slate-50/50 rounded-2xl border border-slate-100 backdrop-blur-sm">
+            <div className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-2">Total Images</div>
+            <div className="text-4xl font-bold text-slate-900 tracking-tight">{counts.images.toLocaleString()}</div>
           </div>
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <div className="text-sm text-gray-500">Total Captions</div>
-            <div className="text-2xl font-bold text-gray-900">{counts.captions}</div>
+          <div className="p-6 bg-slate-50/50 rounded-2xl border border-slate-100 backdrop-blur-sm">
+            <div className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-2">Total Captions</div>
+            <div className="text-4xl font-bold text-slate-900 tracking-tight">{counts.captions.toLocaleString()}</div>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-          <h3 className="text-lg font-bold mb-4 text-gray-800">Recent Images</h3>
-          <ul className="space-y-2">
+        <div className="glass-card p-6 h-full">
+          <h3 className="text-lg font-bold mb-4 text-slate-800 flex items-center gap-2">
+            <ImageIcon className="w-5 h-5 text-purple-500" /> Recent Images
+          </h3>
+          <ul className="space-y-3">
             {recentData.images.map((img) => (
-              <li key={img.id} className="text-sm truncate text-gray-600 border-b border-gray-50 pb-2">{img.url}</li>
+              <li key={img.id} className="text-sm text-slate-600 border-b border-slate-100 pb-2 last:border-0 flex items-center gap-3">
+                <div className="w-10 h-8 rounded-md overflow-hidden bg-slate-100 flex-shrink-0">
+                  <img src={img.url} alt="" className="w-full h-full object-cover" />
+                </div>
+                <span className="truncate flex-1 font-mono text-xs">{img.url}</span>
+              </li>
             ))}
           </ul>
         </div>
-        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-          <h3 className="text-lg font-bold mb-4 text-gray-800">Recent Captions</h3>
-          <ul className="space-y-2">
+        <div className="glass-card p-6 h-full">
+          <h3 className="text-lg font-bold mb-4 text-slate-800 flex items-center gap-2">
+            <Type className="w-5 h-5 text-amber-500" /> Recent Captions
+          </h3>
+          <ul className="space-y-3">
             {recentData.captions.map((cap) => (
-              <li key={cap.id} className="text-sm truncate text-gray-600 border-b border-gray-50 pb-2">{cap.content}</li>
+              <li key={cap.id} className="text-sm text-slate-600 border-b border-slate-100 pb-2 last:border-0">
+                <p className="line-clamp-2 italic">"{cap.content}"</p>
+              </li>
             ))}
           </ul>
         </div>
@@ -223,26 +216,26 @@ export default function StatsPanel() {
       {/* --- KEY METRIC CARDS --- */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
-          icon={<Users className="w-5 h-5 text-blue-500" />} 
+          icon={<Users className="w-5 h-5 text-blue-600" />} 
           label="Total Users" 
           value={counts.users.toLocaleString()} 
           color="blue"
         />
         <StatCard 
-          icon={<ImageIcon className="w-5 h-5 text-purple-500" />} 
+          icon={<ImageIcon className="w-5 h-5 text-purple-600" />} 
           label="Total Memes" 
           value={counts.images.toLocaleString()} 
           color="purple"
         />
         <StatCard 
-          icon={<Type className="w-5 h-5 text-amber-500" />} 
+          icon={<Type className="w-5 h-5 text-amber-600" />} 
           label="Total Captions" 
           value={counts.captions.toLocaleString()} 
           color="amber"
         />
         <StatCard 
-          icon={<Activity className="w-5 h-5 text-green-500" />} 
-          label="Active Users Today" 
+          icon={<Activity className="w-5 h-5 text-green-600" />} 
+          label="Active Users" 
           value={counts.activeToday.toLocaleString()} 
           color="green"
         />
@@ -250,30 +243,34 @@ export default function StatsPanel() {
 
       {/* --- ANALYTICS --- */}
       <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Analytics</h2>
+        <h2 className="text-2xl font-bold text-slate-800 tracking-tight pl-2">Analytics</h2>
         
         <div className="grid grid-cols-1 gap-8">
           <ChartCard title="Meme Birth Rate" subtitle="Images created per day (Last 30 days)">
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={analyticsData.memeBirthRate}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" strokeOpacity={0.5} />
                 <XAxis 
                   dataKey="date" 
-                  fontSize={10} 
+                  fontSize={11} 
                   tickFormatter={(val) => val.split('-').slice(1).join('/')}
-                  stroke="#888"
+                  stroke="#94a3b8"
+                  axisLine={false}
+                  tickLine={false}
+                  dy={10}
                 />
-                <YAxis fontSize={10} stroke="#888" />
+                <YAxis fontSize={11} stroke="#94a3b8" axisLine={false} tickLine={false} dx={-10} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #f0f0f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(8px)', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                  labelStyle={{ fontWeight: 'bold', color: '#1e293b' }}
                 />
                 <Line 
                   type="monotone" 
                   dataKey="count" 
                   stroke="#3b82f6" 
                   strokeWidth={3} 
-                  dot={{ r: 4, fill: '#3b82f6' }}
-                  activeDot={{ r: 6 }}
+                  dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }}
+                  activeDot={{ r: 6, fill: '#2563eb' }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -283,17 +280,17 @@ export default function StatsPanel() {
 
       {/* --- CONTENT INSIGHTS --- */}
       <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Content Insights</h2>
+        <h2 className="text-2xl font-bold text-slate-800 tracking-tight pl-2">Content Insights</h2>
         
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
-            <ChartCard title="Viral Meme Network Graph" subtitle="Meme-Caption relationships (Hover nodes to preview)">
+          <div className="lg:col-span-2 h-full">
+            <ChartCard title="Viral Meme Network" subtitle="Meme-Caption relationships (Click nodes to inspect)">
               <NetworkGraph data={networkData} />
             </ChartCard>
           </div>
 
-          <div className="lg:col-span-1">
-            <ChartCard title="Top Captions Leaderboard" subtitle="Most liked captions overall">
+          <div className="lg:col-span-1 h-full">
+            <ChartCard title="Leaderboard" subtitle="Top performing captions">
               <Leaderboard supabase={supabase} />
             </ChartCard>
           </div>
@@ -308,24 +305,24 @@ export default function StatsPanel() {
 
 function StatCard({ icon, label, value, color }: { icon: React.ReactNode, label: string, value: string, color: string }) {
   const colorMap: any = {
-    blue: "bg-blue-50 text-blue-600 border-blue-100 hover:border-blue-300",
-    purple: "bg-purple-50 text-purple-600 border-purple-100 hover:border-purple-300",
-    amber: "bg-amber-50 text-amber-600 border-amber-100 hover:border-amber-300",
-    green: "bg-green-50 text-green-600 border-green-100 hover:border-green-300",
+    blue: "bg-blue-50/50 text-blue-600 border-blue-100 hover:border-blue-200 hover:bg-blue-50",
+    purple: "bg-purple-50/50 text-purple-600 border-purple-100 hover:border-purple-200 hover:bg-purple-50",
+    amber: "bg-amber-50/50 text-amber-600 border-amber-100 hover:border-amber-200 hover:bg-amber-50",
+    green: "bg-green-50/50 text-green-600 border-green-100 hover:border-green-200 hover:bg-green-50",
   }
 
   return (
     <div className={cn(
-      "p-5 rounded-xl border shadow-sm transition-all duration-300 group",
-      colorMap[color] || "bg-white border-gray-100"
+      "p-6 rounded-2xl border backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-lg",
+      colorMap[color] || "bg-white/50 border-gray-100"
     )}>
       <div className="flex items-center gap-4">
-        <div className="p-3 bg-white rounded-lg shadow-sm border border-inherit group-hover:scale-110 transition-transform">
+        <div className="p-3 bg-white rounded-xl shadow-sm border border-white/50">
           {icon}
         </div>
         <div>
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</p>
-          <p className="text-2xl font-black text-gray-900 leading-none mt-1">{value}</p>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
+          <p className="text-2xl font-black text-slate-800 leading-none mt-1 font-sans">{value}</p>
         </div>
       </div>
     </div>
@@ -334,10 +331,10 @@ function StatCard({ icon, label, value, color }: { icon: React.ReactNode, label:
 
 function ChartCard({ title, subtitle, children }: { title: string, subtitle?: string, children: React.ReactNode }) {
   return (
-    <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex flex-col h-full">
+    <div className="glass-card p-6 h-full flex flex-col">
       <div className="mb-6">
-        <h3 className="text-lg font-bold text-gray-900">{title}</h3>
-        {subtitle && <p className="text-sm text-gray-500 mt-1">{subtitle}</p>}
+        <h3 className="text-lg font-bold text-slate-800">{title}</h3>
+        {subtitle && <p className="text-sm text-slate-500 mt-1 font-medium">{subtitle}</p>}
       </div>
       <div className="flex-1 min-h-[300px]">
         {children}
@@ -357,23 +354,19 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
     if (!svgRef.current || !containerRef.current || !data.nodes.length) return
 
     const width = containerRef.current.clientWidth
-    const height = containerRef.current.clientHeight || 500
-
+    const height = 500
     const svg = d3.select(svgRef.current)
     svg.selectAll("*").remove()
 
-    const simulation = d3
-      .forceSimulation(data.nodes)
-      // shorter distance for tighter clusters
-      .force("link", d3.forceLink(data.links).id((d: any) => d.id).distance(30))
-      .force("charge", d3.forceManyBody().strength(-120))
-      .force("collide", d3.forceCollide().radius(16))
+    const simulation = d3.forceSimulation(data.nodes)
+      .force("link", d3.forceLink(data.links).id((d: any) => d.id).distance(40).strength(0.5))
+      .force("charge", d3.forceManyBody().strength(-150))
+      .force("collide", d3.forceCollide().radius(20))
       .force("center", d3.forceCenter(width / 2, height / 2))
 
     const g = svg.append("g")
 
-    const link = g
-      .append("g")
+    const link = g.append("g")
       .attr("stroke", "#94a3b8")
       .attr("stroke-opacity", 0.4)
       .selectAll("line")
@@ -381,8 +374,7 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
       .join("line")
       .attr("stroke-width", 1.5)
 
-    const node = g
-      .append("g")
+    const node = g.append("g")
       .selectAll("g")
       .data(data.nodes)
       .join("g")
@@ -398,37 +390,31 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
         setHoveredNode(null)
       })
       .on("click", (event, d) => {
-        // prevent zoom/pan from triggering
         event.stopPropagation()
         setSelectedNode(d)
       })
-      .call(
-        d3
-          .drag<any, any>()
-          .on("start", (event, d) => {
-            if (!event.active) simulation.alphaTarget(0.3).restart()
-            d.fx = d.x
-            d.fy = d.y
-          })
-          .on("drag", (event, d) => {
-            d.fx = event.x
-            d.fy = event.y
-          })
-          .on("end", (event, d) => {
-            if (!event.active) simulation.alphaTarget(0)
-            d.fx = null
-            d.fy = null
-          })
-      )
+      .call(d3.drag<any, any>()
+        .on("start", (event, d) => {
+          if (!event.active) simulation.alphaTarget(0.3).restart()
+          d.fx = d.x
+          d.fy = d.y
+        })
+        .on("drag", (event, d) => {
+          d.fx = event.x
+          d.fy = event.y
+        })
+        .on("end", (event, d) => {
+          if (!event.active) simulation.alphaTarget(0)
+          d.fx = null
+          d.fy = null
+        }))
 
-    node
-      .append("circle")
-      .attr("r", (d: any) =>
-        d.type === "image" ? 14 : Math.max(6, Math.min(18, (d.likes || 0) / 2))
-      )
-      .attr("fill", (d: any) => (d.type === "image" ? "#3b82f6" : "#fbbf24"))
+    node.append("circle")
+      .attr("r", d => d.type === 'image' ? 14 : Math.max(6, Math.min(18, (d.likes || 0) / 2)))
+      .attr("fill", d => d.type === 'image' ? "#3b82f6" : "#fbbf24")
       .attr("stroke", "#fff")
       .attr("stroke-width", 2)
+      .attr("class", "transition-all duration-200 hover:stroke-gray-400")
 
     simulation.on("tick", () => {
       link
@@ -440,91 +426,88 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
       node.attr("transform", (d: any) => `translate(${d.x},${d.y})`)
     })
 
-    svg.call(
-      d3.zoom<SVGSVGElement, unknown>().on("zoom", (event) => {
-        g.attr("transform", event.transform)
-      })
-    )
+    svg.call(d3.zoom<SVGSVGElement, unknown>().on("zoom", (event) => {
+      g.attr("transform", event.transform)
+    }))
+
   }, [data])
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full relative border rounded-lg bg-slate-50 overflow-hidden min-h-[500px]"
-    >
-      <svg ref={svgRef} className="w-full h-full cursor-move" />
-
+    <div ref={containerRef} className="w-full h-full relative rounded-xl bg-slate-50/50 overflow-hidden min-h-[500px] border border-slate-100">
+      <svg ref={svgRef} className="w-full h-[500px] cursor-move" />
+      
+      {/* Interaction Tooltip */}
       {hoveredNode && (
-        <div
-          className="fixed z-50 pointer-events-none transform -translate-x-1/2 -translate-y-full mb-4"
+        <div 
+          className="fixed z-50 pointer-events-none transform -translate-x-1/2 -translate-y-full mb-4 transition-opacity duration-200"
           style={{ left: tooltipPos.x, top: tooltipPos.y }}
         >
-          <div className="bg-white p-2 rounded-lg shadow-xl border border-gray-200 max-w-[250px]">
-            {hoveredNode.type === "image" ? (
+          <div className="bg-white/90 backdrop-blur-md p-3 rounded-2xl shadow-xl border border-white/50 max-w-[250px]">
+            {hoveredNode.type === 'image' ? (
               <div className="space-y-2">
-                <img
-                  src={hoveredNode.url}
-                  className="w-full rounded-md object-contain max-h-[200px]"
-                />
-                <p className="text-[10px] text-gray-400 uppercase font-bold text-center">
-                  Meme Node
-                </p>
+                <img src={hoveredNode.url} alt="Meme Preview" className="w-full h-auto rounded-lg object-contain max-h-[200px]" />
+                <p className="text-[10px] text-slate-400 uppercase font-bold text-center tracking-wider">Meme Node</p>
               </div>
             ) : (
-              <div className="space-y-1">
-                <p className="text-sm italic text-gray-800">
-                  "{hoveredNode.content}"
-                </p>
-                <div className="flex justify-between text-[10px] mt-2 pt-2 border-t">
-                  <span className="font-bold text-blue-500">Caption</span>
-                  <span className="text-gray-500">
-                    {hoveredNode.likes} likes
-                  </span>
+              <div className="space-y-2">
+                <p className="text-sm text-slate-800 leading-snug font-medium">"{hoveredNode.content}"</p>
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                  <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Caption</span>
+                  <span className="text-[10px] text-slate-500 font-mono">{hoveredNode.likes} likes</span>
                 </div>
               </div>
             )}
           </div>
         </div>
       )}
-      {/* selected node detail box */}
+
+      {/* Selected Node Details */}
       {selectedNode && (
-        <div className="absolute inset-0 flex items-center justify-center z-40 pointer-events-none">
-          <div className="bg-white p-4 rounded-lg shadow-2xl border border-gray-300 max-w-md w-full pointer-events-auto">
-            <button
-              className="text-gray-500 hover:text-gray-800 float-right"
-              onClick={() => setSelectedNode(null)}
-            >
-              ×
-            </button>
-            {selectedNode.type === "image" ? (
-              <img
-                src={selectedNode.url}
-                className="w-full object-contain max-h-[80vh]"
-              />
+        <div className="absolute inset-0 flex items-center justify-center z-40 p-4 bg-slate-900/20 backdrop-blur-sm" onClick={() => setSelectedNode(null)}>
+          <div className="glass-panel p-6 max-w-md w-full animate-fade-in-up" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <h4 className="text-lg font-bold text-slate-800 uppercase tracking-tight">
+                {selectedNode.type === 'image' ? 'Meme Details' : 'Caption Details'}
+              </h4>
+              <button 
+                onClick={() => setSelectedNode(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors"
+              >
+                &times;
+              </button>
+            </div>
+            
+            {selectedNode.type === 'image' ? (
+              <div className="space-y-4">
+                <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50">
+                  <img src={selectedNode.url} alt="Full size" className="w-full h-auto" />
+                </div>
+                <div className="text-xs font-mono text-slate-400 truncate">{selectedNode.id}</div>
+              </div>
             ) : (
-              <div className="space-y-2">
-                <p className="text-lg italic text-gray-800">
+              <div className="space-y-4">
+                <blockquote className="text-xl font-medium text-slate-800 italic border-l-4 border-amber-400 pl-4 py-2 bg-amber-50 rounded-r-lg">
                   "{selectedNode.content}"
-                </p>
-                <p className="text-sm text-gray-500">
-                  {selectedNode.likes} likes
-                </p>
+                </blockquote>
+                <div className="flex gap-4">
+                  <div className="flex-1 p-3 bg-slate-50 rounded-lg text-center">
+                    <div className="text-xs text-slate-500 uppercase">Likes</div>
+                    <div className="text-xl font-bold text-blue-600">{selectedNode.likes}</div>
+                  </div>
+                  <div className="flex-1 p-3 bg-slate-50 rounded-lg text-center">
+                    <div className="text-xs text-slate-500 uppercase">ID</div>
+                    <div className="text-xs font-mono text-slate-800 mt-1 truncate px-2">{selectedNode.id.substring(0,8)}...</div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
         </div>
       )}
 
-      <div className="absolute bottom-4 right-4 flex gap-4 text-[10px] font-bold text-gray-500 bg-white/90 px-3 py-2 rounded-full border shadow-sm">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-blue-500" />
-          MEME
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-amber-400" />
-          CAPTION
-        </div>
+      <div className="absolute bottom-4 right-4 flex gap-3 text-[10px] font-bold text-slate-500 bg-white/80 backdrop-blur-md px-4 py-2 rounded-full border border-white/50 shadow-sm">
+        <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-sm" /> MEME</div>
+        <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-sm" /> CAPTION</div>
       </div>
     </div>
   )
@@ -546,23 +529,23 @@ function Leaderboard({ supabase }: { supabase: any }) {
   }, [supabase])
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
       {data.map((item, idx) => (
-        <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-all border-b border-gray-50 last:border-0 group">
-          <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs font-black text-gray-400 group-hover:bg-blue-500 group-hover:text-white transition-colors">
+        <div key={item.id} className="flex items-center gap-4 p-3 rounded-xl hover:bg-white/60 transition-all border border-transparent hover:border-white/50 group">
+          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-black text-slate-400 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-inner">
             {idx + 1}
           </div>
-          <div className="w-14 h-12 rounded-lg overflow-hidden flex-shrink-0 border border-gray-100 bg-gray-50 shadow-sm">
+          <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-white/50 shadow-sm">
             {item.images?.url ? (
               <img src={item.images.url} alt="" className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-5 h-5 text-gray-300" /></div>
+              <div className="w-full h-full flex items-center justify-center bg-slate-50"><ImageIcon className="w-5 h-5 text-slate-300" /></div>
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-gray-700 font-semibold truncate leading-tight mb-1">{item.content}</p>
-            <p className="text-[10px] text-blue-500 flex items-center gap-1 font-black uppercase tracking-widest">
-              <TrendingUp className="w-2.5 h-2.5" /> {item.like_count} likes
+            <p className="text-sm text-slate-700 font-medium truncate leading-tight mb-1">{item.content}</p>
+            <p className="text-[10px] text-blue-500 flex items-center gap-1 font-bold uppercase tracking-widest bg-blue-50 w-fit px-2 py-0.5 rounded-full">
+              <TrendingUp className="w-2.5 h-2.5" /> {item.like_count}
             </p>
           </div>
         </div>
