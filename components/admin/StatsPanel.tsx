@@ -9,13 +9,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  Cell,
-  RadialBarChart,
-  RadialBar,
-  Legend
+  ResponsiveContainer
 } from "recharts"
 import * as d3 from "d3"
 import { 
@@ -24,9 +18,6 @@ import {
   Type, 
   Activity, 
   TrendingUp, 
-  Smile, 
-  Cpu, 
-  Share2 
 } from "lucide-react"
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
@@ -37,11 +28,6 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // --- Helper Types ---
-
-interface Profile {
-  id: string
-  created_datetime_utc: string
-}
 
 interface DBImage {
   id: string
@@ -56,23 +42,6 @@ interface Caption {
   image_id: string
   like_count: number
   created_datetime_utc: string
-  humor_flavor_id?: number
-}
-
-interface HumorFlavor {
-  id: number
-  name: string
-}
-
-interface LLMResponse {
-  id: number
-  model_id: number
-  caption_id: string
-}
-
-interface LLMModel {
-  id: number
-  name: string
 }
 
 // --- Main Component ---
@@ -86,10 +55,8 @@ export default function StatsPanel() {
   const [counts, setCounts] = useState({ users: 0, images: 0, captions: 0, activeToday: 0 })
   const [recentData, setRecentData] = useState<{ images: DBImage[], captions: (Caption & { images?: { url: string } })[] }>({ images: [], captions: [] })
   const [analyticsData, setAnalyticsData] = useState<{
-    memeBirthRate: any[],
-    flavorData: any[],
-    modelData: any[]
-  }>({ memeBirthRate: [], flavorData: [], modelData: [] })
+    memeBirthRate: any[]
+  }>({ memeBirthRate: [] })
   const [networkData, setNetworkData] = useState<{ nodes: any[], links: any[] }>({ nodes: [], links: [] })
 
   useEffect(() => {
@@ -146,62 +113,29 @@ export default function StatsPanel() {
         .map(([date, count]) => ({ date, count }))
         .sort((a, b) => a.date.localeCompare(b.date))
 
-        // Humor Flavor Popularity (Using 'slug' as discovered in schema)
-        const { data: captionFlavors } = await supabase
-          .from("captions")
-          .select("humor_flavor_id, humor_flavors(slug)")
-          .not("humor_flavor_id", "is", null)
-        
-        const flavorGrouped = d3.rollups(
-          captionFlavors || [],
-          v => v.length,
-          d => (d as any).humor_flavors?.slug || "Unknown"
-        ).map(([name, count], i) => ({
-          name: name.replace(/-/g, ' '), // Prettify slug
-          value: count,
-          fill: d3.schemeTableau10[i % 10]
-        }))
-
-        // AI Model Performance
-        // We join captions with humor_flavor_id to show engagement by "flavor" since model link is complex
-        const { data: modelPerf } = await supabase
-          .from("captions")
-          .select("like_count, humor_flavors(slug)")
-        
-        const modelGrouped = d3.rollups(
-          modelPerf || [],
-          v => d3.mean(v, d => (d as any).like_count || 0),
-          d => (d as any).humor_flavors?.slug || "Generic"
-        ).map(([name, avgLikes]) => ({
-          name: name.replace(/-/g, ' '),
-          avgLikes: Math.round((avgLikes || 0) * 10) / 10
-        })).sort((a, b) => b.avgLikes - a.avgLikes).slice(0, 8)
-
         setAnalyticsData({
-          memeBirthRate: birthRateGrouped,
-          flavorData: flavorGrouped,
-          modelData: modelGrouped
+          memeBirthRate: birthRateGrouped
         })
 
         // 5. Network Visualization Data
-        const { data: networkNodes } = await supabase.from("captions").select("id, content, like_count, image_id").limit(50)
-        const { data: allImages } = await supabase.from("images").select("id, url").limit(20)
+        const { data: networkNodes } = await supabase.from("captions").select("id, content, like_count, image_id").limit(100)
+        const { data: allImages } = await supabase.from("images").select("id, url").limit(30)
 
         const nodes: any[] = []
         const links: any[] = []
-        const nodeSet = new Set()
+        const imageNodeIds = new Set()
 
         allImages?.forEach(img => {
-          nodes.push({ id: img.id, type: 'image', url: img.url, label: 'Meme' })
-          nodeSet.add(img.id)
+          nodes.push({ id: img.id, type: 'image', url: img.url })
+          imageNodeIds.add(img.id)
         })
 
         networkNodes?.forEach(cap => {
-          if (!nodeSet.has(cap.id)) {
-            nodes.push({ id: cap.id, type: 'caption', content: cap.content, likes: cap.like_count })
-            nodeSet.add(cap.id)
-          }
-          if (nodeSet.has(cap.image_id)) {
+          // Add caption node
+          nodes.push({ id: cap.id, type: 'caption', content: cap.content, likes: cap.like_count })
+          
+          // Connect to image if the image exists in our image set
+          if (imageNodeIds.has(cap.image_id)) {
             links.push({ source: cap.id, target: cap.image_id })
           }
         })
@@ -225,7 +159,7 @@ export default function StatsPanel() {
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-12">
       
-      {/* --- EXISTING STATS (Restyled slightly to match modern theme) --- */}
+      {/* --- QUICK STATS --- */}
       <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
         <h2 className="text-xl font-bold mb-4 text-gray-800">Quick Stats</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -263,7 +197,7 @@ export default function StatsPanel() {
         </div>
       </div>
 
-      {/* --- NEW SECTION 1: KEY METRIC CARDS --- */}
+      {/* --- KEY METRIC CARDS --- */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
           icon={<Users className="w-5 h-5 text-blue-500" />} 
@@ -291,12 +225,11 @@ export default function StatsPanel() {
         />
       </div>
 
-      {/* --- NEW SECTION 2: ANALYTICS --- */}
+      {/* --- ANALYTICS --- */}
       <div className="space-y-6">
         <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Analytics</h2>
         
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Meme Birth Rate */}
+        <div className="grid grid-cols-1 gap-8">
           <ChartCard title="Meme Birth Rate" subtitle="Images created per day (Last 30 days)">
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={analyticsData.memeBirthRate}>
@@ -322,66 +255,20 @@ export default function StatsPanel() {
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
-
-          {/* Humor Flavor Popularity */}
-          <ChartCard title="Humor Flavor Popularity" subtitle="Caption distribution by flavor">
-            <ResponsiveContainer width="100%" height={300}>
-              <RadialBarChart 
-                cx="50%" 
-                cy="50%" 
-                innerRadius="10%" 
-                outerRadius="80%" 
-                barSize={10} 
-                data={analyticsData.flavorData}
-              >
-                <RadialBar
-                  label={{ position: 'insideStart', fill: '#fff', fontSize: 10 }}
-                  background
-                  dataKey="value"
-                />
-                <Legend iconSize={10} layout="vertical" verticalAlign="middle" align="right" />
-                <Tooltip />
-              </RadialBarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          {/* AI Model Performance */}
-          <div className="lg:col-span-2">
-            <ChartCard title="AI Model Performance" subtitle="Average caption likes grouped by LLM model">
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={analyticsData.modelData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="name" fontSize={10} stroke="#888" />
-                  <YAxis fontSize={10} stroke="#888" />
-                  <Tooltip 
-                    cursor={{ fill: '#f8fafc' }}
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  />
-                  <Bar dataKey="avgLikes" radius={[4, 4, 0, 0]}>
-                    {analyticsData.modelData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={d3.schemeTableau10[index % 10]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-          </div>
         </div>
       </div>
 
-      {/* --- NEW SECTION 3: CONTENT INSIGHTS --- */}
+      {/* --- CONTENT INSIGHTS --- */}
       <div className="space-y-6">
         <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Content Insights</h2>
         
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Viral Meme Network Graph */}
           <div className="lg:col-span-2">
-            <ChartCard title="Viral Meme Network Graph" subtitle="Interactive relationship between memes and captions">
+            <ChartCard title="Viral Meme Network Graph" subtitle="Meme-Caption relationships (Hover nodes to preview)">
               <NetworkGraph data={networkData} />
             </ChartCard>
           </div>
 
-          {/* Top Captions Leaderboard */}
           <div className="lg:col-span-1">
             <ChartCard title="Top Captions Leaderboard" subtitle="Most liked captions overall">
               <Leaderboard supabase={supabase} />
@@ -439,36 +326,48 @@ function ChartCard({ title, subtitle, children }: { title: string, subtitle?: st
 function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const [hoveredNode, setHoveredNode] = useState<any>(null)
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || !data.nodes.length) return
 
     const width = containerRef.current.clientWidth
-    const height = 400
+    const height = 500
     const svg = d3.select(svgRef.current)
     svg.selectAll("*").remove()
 
     const simulation = d3.forceSimulation(data.nodes)
-      .force("link", d3.forceLink(data.links).id((d: any) => d.id).distance(100))
-      .force("charge", d3.forceManyBody().strength(-200))
+      .force("link", d3.forceLink(data.links).id((d: any) => d.id).distance(120).strength(1))
+      .force("charge", d3.forceManyBody().strength(-300))
+      .force("collide", d3.forceCollide().radius(30))
       .force("center", d3.forceCenter(width / 2, height / 2))
 
     const g = svg.append("g")
 
     const link = g.append("g")
-      .attr("stroke", "#e2e8f0")
-      .attr("stroke-opacity", 0.6)
+      .attr("stroke", "#94a3b8")
+      .attr("stroke-opacity", 0.4)
       .selectAll("line")
       .data(data.links)
       .join("line")
-      .attr("stroke-width", 1)
+      .attr("stroke-width", 1.5)
 
     const node = g.append("g")
-      .attr("stroke", "#fff")
-      .attr("stroke-width", 1.5)
       .selectAll("g")
       .data(data.nodes)
       .join("g")
+      .attr("cursor", "pointer")
+      .on("mouseenter", (event, d) => {
+        setHoveredNode(d)
+        setTooltipPos({ x: event.pageX, y: event.y })
+      })
+      .on("mousemove", (event) => {
+        setTooltipPos({ x: event.pageX, y: event.pageY })
+      })
+      .on("mouseleave", () => {
+        setHoveredNode(null)
+      })
       .call(d3.drag<any, any>()
         .on("start", (event, d) => {
           if (!event.active) simulation.alphaTarget(0.3).restart()
@@ -486,11 +385,11 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
         }))
 
     node.append("circle")
-      .attr("r", d => d.type === 'image' ? 12 : Math.max(5, Math.min(15, (d.likes || 0) / 5)))
+      .attr("r", d => d.type === 'image' ? 14 : Math.max(6, Math.min(18, (d.likes || 0) / 2)))
       .attr("fill", d => d.type === 'image' ? "#3b82f6" : "#fbbf24")
-
-    node.append("title")
-      .text(d => d.type === 'image' ? `Meme (ID: ${d.id})` : `${d.content}\nLikes: ${d.likes}`)
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 2)
+      .attr("class", "transition-all duration-200 hover:stroke-gray-400")
 
     simulation.on("tick", () => {
       link
@@ -502,7 +401,6 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
       node.attr("transform", (d: any) => `translate(${d.x},${d.y})`)
     })
 
-    // Zoom
     svg.call(d3.zoom<SVGSVGElement, unknown>().on("zoom", (event) => {
       g.attr("transform", event.transform)
     }))
@@ -510,11 +408,37 @@ function NetworkGraph({ data }: { data: { nodes: any[], links: any[] } }) {
   }, [data])
 
   return (
-    <div ref={containerRef} className="w-full h-full relative border rounded-lg bg-gray-50 overflow-hidden">
-      <svg ref={svgRef} className="w-full h-[400px] cursor-move" />
-      <div className="absolute bottom-2 right-2 flex gap-3 text-[10px] font-medium text-gray-500 bg-white/80 backdrop-blur px-2 py-1 rounded border">
-        <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500" /> Meme</div>
-        <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-400" /> Caption</div>
+    <div ref={containerRef} className="w-full h-full relative border rounded-lg bg-slate-50 overflow-hidden min-h-[500px]">
+      <svg ref={svgRef} className="w-full h-[500px] cursor-move" />
+      
+      {/* Interaction Tooltip */}
+      {hoveredNode && (
+        <div 
+          className="fixed z-50 pointer-events-none transform -translate-x-1/2 -translate-y-full mb-4"
+          style={{ left: tooltipPos.x, top: tooltipPos.y }}
+        >
+          <div className="bg-white p-2 rounded-lg shadow-xl border border-gray-200 max-w-[250px]">
+            {hoveredNode.type === 'image' ? (
+              <div className="space-y-2">
+                <img src={hoveredNode.url} alt="Meme Preview" className="w-full h-auto rounded-md object-contain max-h-[200px]" />
+                <p className="text-[10px] text-gray-400 uppercase font-bold text-center">Meme Node</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <p className="text-sm text-gray-800 leading-tight font-medium italic">"{hoveredNode.content}"</p>
+                <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
+                  <span className="text-[10px] font-bold text-blue-500 uppercase">Caption</span>
+                  <span className="text-[10px] text-gray-500">{hoveredNode.likes} likes</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="absolute bottom-4 right-4 flex gap-4 text-[10px] font-bold text-gray-500 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-full border shadow-sm">
+        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500 shadow-sm" /> MEME</div>
+        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-amber-400 shadow-sm" /> CAPTION</div>
       </div>
     </div>
   )
@@ -538,21 +462,21 @@ function Leaderboard({ supabase }: { supabase: any }) {
   return (
     <div className="space-y-4">
       {data.map((item, idx) => (
-        <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0">
-          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-400">
+        <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-all border-b border-gray-50 last:border-0 group">
+          <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs font-black text-gray-400 group-hover:bg-blue-500 group-hover:text-white transition-colors">
             {idx + 1}
           </div>
-          <div className="w-12 h-10 rounded overflow-hidden flex-shrink-0 border border-gray-100 bg-gray-50">
+          <div className="w-14 h-12 rounded-lg overflow-hidden flex-shrink-0 border border-gray-100 bg-gray-50 shadow-sm">
             {item.images?.url ? (
               <img src={item.images.url} alt="" className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-4 h-4 text-gray-300" /></div>
+              <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-5 h-5 text-gray-300" /></div>
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-gray-700 font-medium truncate">{item.content}</p>
-            <p className="text-[10px] text-gray-400 flex items-center gap-1 uppercase tracking-tighter">
-              <TrendingUp className="w-2 h-2" /> {item.like_count} likes
+            <p className="text-sm text-gray-700 font-semibold truncate leading-tight mb-1">{item.content}</p>
+            <p className="text-[10px] text-blue-500 flex items-center gap-1 font-black uppercase tracking-widest">
+              <TrendingUp className="w-2.5 h-2.5" /> {item.like_count} likes
             </p>
           </div>
         </div>
