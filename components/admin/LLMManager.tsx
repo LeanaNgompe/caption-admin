@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { createBrowserClient } from "@/lib/supabase/client"
-import { Database, Plus, Edit2, Trash2, Save, Box, Send, MessageSquare, ExternalLink, ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Image as ImageIcon, Clock, Terminal } from "lucide-react"
+import { Database, Plus, Edit2, Trash2, Save, Box, Send, MessageSquare, ExternalLink, ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Image as ImageIcon, Clock, Terminal, Info } from "lucide-react"
 
 interface LLMModel {
   id: number;
