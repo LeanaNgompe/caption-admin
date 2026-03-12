@@ -53,19 +53,35 @@ export default function LLMManager() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    console.log("Fetching LLM data for page:", chainPage)
+    
     const [modelsRes, providersRes, chainsRes, responsesRes] = await Promise.all([
       supabase.from("llm_models").select("*, llm_providers(name)").order("id"),
       supabase.from("llm_providers").select("*").order("id"),
       supabase.from("llm_prompt_chains")
-        .select("*, caption_requests(images(url)), captions(caption)")
+        .select("id, created_datetime_utc, caption_request_id, caption_requests(images(url)), captions(caption)")
         .order("id", { ascending: false })
         .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1),
       supabase.from("llm_model_responses").select("*, llm_models(name)").order("id", { ascending: false }).limit(20)
     ])
 
+    if (modelsRes.error) console.error("Models error:", modelsRes.error)
+    if (providersRes.error) console.error("Providers error:", providersRes.error)
+    if (chainsRes.error) {
+      console.error("Chains error:", chainsRes.error)
+      // Try a fallback query without joins if the joined one fails
+      const fallbackRes = await supabase.from("llm_prompt_chains")
+        .select("*")
+        .order("id", { ascending: false })
+        .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1)
+      if (fallbackRes.data) setChains(fallbackRes.data as any)
+    } else if (chainsRes.data) {
+      console.log("Chains data count:", chainsRes.data.length)
+      setChains(chainsRes.data as any)
+    }
+
     if (modelsRes.data) setModels(modelsRes.data as any)
     if (providersRes.data) setProviders(providersRes.data)
-    if (chainsRes.data) setChains(chainsRes.data as any)
     if (responsesRes.data) setResponses(responsesRes.data as any)
     
     setLoading(false)
