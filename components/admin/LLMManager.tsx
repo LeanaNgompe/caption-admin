@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { createBrowserClient } from "@/lib/supabase/client"
-import { Database, Plus, Edit2, Trash2, Save, Box, Send, MessageSquare, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react"
+import { Database, Plus, Edit2, Trash2, Save, Box, Send, MessageSquare, ExternalLink, ChevronLeft, ChevronRight, Info } from "lucide-react"
 
 interface LLMModel {
   id: number;
@@ -20,14 +20,8 @@ interface LLMProvider {
 interface LLMPromptChain {
   id: number;
   created_datetime_utc: string;
-  caption_requests?: {
-    images?: {
-      url: string;
-    }
-  };
-  captions?: {
-    caption: string;
-  }[];
+  caption_requests?: any; 
+  captions?: any[];
 }
 
 interface LLMResponse {
@@ -53,30 +47,33 @@ export default function LLMManager() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    console.log("Fetching LLM data for page:", chainPage)
     
+    // Explicitly select the nested structure
     const [modelsRes, providersRes, chainsRes, responsesRes] = await Promise.all([
       supabase.from("llm_models").select("*, llm_providers(name)").order("id"),
       supabase.from("llm_providers").select("*").order("id"),
       supabase.from("llm_prompt_chains")
-        .select("id, created_datetime_utc, caption_request_id, caption_requests(images(url)), captions(caption)")
+        .select(`
+          id, 
+          created_datetime_utc, 
+          caption_requests (
+            images (
+              url,
+              image_description
+            )
+          ),
+          captions (
+            caption
+          )
+        `)
         .order("id", { ascending: false })
         .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1),
       supabase.from("llm_model_responses").select("*, llm_models(name)").order("id", { ascending: false }).limit(20)
     ])
 
-    if (modelsRes.error) console.error("Models error:", modelsRes.error)
-    if (providersRes.error) console.error("Providers error:", providersRes.error)
     if (chainsRes.error) {
-      console.error("Chains error:", chainsRes.error)
-      // Try a fallback query without joins if the joined one fails
-      const fallbackRes = await supabase.from("llm_prompt_chains")
-        .select("*")
-        .order("id", { ascending: false })
-        .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1)
-      if (fallbackRes.data) setChains(fallbackRes.data as any)
+      console.error("Chains fetch error:", chainsRes.error)
     } else if (chainsRes.data) {
-      console.log("Chains data count:", chainsRes.data.length)
       setChains(chainsRes.data as any)
     }
 
@@ -240,37 +237,64 @@ export default function LLMManager() {
             <thead>
               <tr className="border-b border-slate-200/60 bg-slate-50/50">
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">ID</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Image</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Sample Caption</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Context Image</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Sample Produced Caption</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Created</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {chains.map((chain) => (
-                <tr key={chain.id} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="p-4 font-bold text-slate-700">#{chain.id}</td>
-                  <td className="p-4">
-                    {chain.caption_requests?.images?.url ? (
-                      <div className="w-12 h-12 rounded-lg overflow-hidden border border-slate-200 shadow-sm relative group/img">
-                        <img src={chain.caption_requests.images.url} alt="Chain context" className="w-full h-full object-cover" />
-                        <a href={chain.caption_requests.images.url} target="_blank" className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity">
-                          <ExternalLink className="w-4 h-4 text-white" />
-                        </a>
+              {chains.map((chain) => {
+                // Supabase joins can return an object or an array depending on cardinality
+                const request = Array.isArray(chain.caption_requests) ? chain.caption_requests[0] : chain.caption_requests;
+                const image = request?.images;
+                const imageUrl = Array.isArray(image) ? image[0]?.url : image?.url;
+                const imageDesc = Array.isArray(image) ? image[0]?.image_description : image?.image_description;
+                
+                const sampleCaption = Array.isArray(chain.captions) && chain.captions.length > 0 
+                  ? chain.captions[0].caption 
+                  : "No captions";
+
+                return (
+                  <tr key={chain.id} className="hover:bg-slate-50/50 transition-colors group">
+                    <td className="p-4 font-bold text-slate-700">#{chain.id}</td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        {imageUrl ? (
+                          <div className="w-14 h-14 rounded-lg overflow-hidden border border-slate-200 shadow-sm relative group/img shrink-0">
+                            <img src={imageUrl} alt="Chain context" className="w-full h-full object-cover" />
+                            <a href={imageUrl} target="_blank" className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity">
+                              <ExternalLink className="w-4 h-4 text-white" />
+                            </a>
+                          </div>
+                        ) : (
+                          <div className="w-14 h-14 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] text-slate-400 shrink-0">No Image</div>
+                        )}
+                        {imageDesc && (
+                          <div className="max-w-[150px] overflow-hidden">
+                            <p className="text-[10px] text-slate-400 font-medium uppercase tracking-tight mb-1">Description</p>
+                            <p className="text-[11px] text-slate-600 line-clamp-2 leading-tight" title={imageDesc}>{imageDesc}</p>
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] text-slate-400">N/A</div>
-                    )}
-                  </td>
-                  <td className="p-4">
-                    <p className="text-sm text-slate-600 font-medium italic line-clamp-2 max-w-md">
-                      {chain.captions && chain.captions.length > 0 ? `"${chain.captions[0].caption}"` : "No captions generated"}
-                    </p>
-                  </td>
-                  <td className="p-4 text-xs text-slate-400">
-                    {new Date(chain.created_datetime_utc).toLocaleDateString()}
-                  </td>
+                    </td>
+                    <td className="p-4">
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 max-w-lg">
+                        <p className="text-sm text-slate-700 font-medium italic leading-relaxed">
+                          {sampleCaption !== "No captions" ? `"${sampleCaption}"` : "No captions generated for this chain"}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="p-4 text-xs text-slate-400 whitespace-nowrap">
+                      {new Date(chain.created_datetime_utc).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                    </td>
+                  </tr>
+                );
+              })}
+              {chains.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={4} className="p-12 text-center text-slate-400 italic">No prompt chains found</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
