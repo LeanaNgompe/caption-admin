@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { createBrowserClient } from "@/lib/supabase/client"
-import { Database, Plus, Edit2, Trash2, Save, Box, Send, MessageSquare, ExternalLink, ChevronLeft, ChevronRight, AlertCircle, RefreshCw } from "lucide-react"
+import { Database, Plus, Edit2, Trash2, Save, Box, Send, MessageSquare, ExternalLink, ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Image as ImageIcon } from "lucide-react"
 
 interface LLMModel {
   id: number;
@@ -20,8 +20,15 @@ interface LLMProvider {
 interface LLMPromptChain {
   id: number;
   created_datetime_utc: string;
-  caption_requests?: any; 
-  captions?: any[];
+  caption_requests?: {
+    images?: {
+      url: string;
+      image_description: string;
+    }
+  };
+  captions?: {
+    caption: string;
+  }[];
 }
 
 interface LLMResponse {
@@ -51,33 +58,40 @@ export default function LLMManager() {
     setError(null)
     
     try {
-      const [modelsRes, providersRes, chainsRes, responsesRes] = await Promise.all([
+      // 1. Fetch Models & Providers (Independent)
+      const [modelsRes, providersRes, responsesRes] = await Promise.all([
         supabase.from("llm_models").select("*, llm_providers(name)").order("id"),
         supabase.from("llm_providers").select("*").order("id"),
-        supabase.from("llm_prompt_chains")
-          .select(`
-            id, 
-            created_datetime_utc, 
-            caption_requests (
-              images (
-                url,
-                image_description
-              )
-            ),
-            captions (
-              caption
-            )
-          `)
-          .order("id", { ascending: false })
-          .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1),
         supabase.from("llm_model_responses").select("*, llm_models(name)").order("id", { ascending: false }).limit(20)
       ])
 
+      if (modelsRes.data) setModels(modelsRes.data as any)
+      if (providersRes.data) setProviders(providersRes.data)
+      if (responsesRes.data) setResponses(responsesRes.data as any)
+
+      // 2. Fetch Prompt Chains with simplified join
+      // Based on diagnostic: pc.caption_request_id -> cr.id, cr.image_id -> img.id
+      const chainsRes = await supabase.from("llm_prompt_chains")
+        .select(`
+          id, 
+          created_datetime_utc, 
+          caption_requests (
+            images (
+              url,
+              image_description
+            )
+          ),
+          captions (
+            caption
+          )
+        `)
+        .order("id", { ascending: false })
+        .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1)
+
       if (chainsRes.error) {
-        console.error("Chains fetch error:", chainsRes.error)
-        setError(`Chains Error: ${chainsRes.error.message}`)
+        console.error("Chains complex fetch error:", chainsRes.error)
         
-        // Fallback to simple query to see if table exists/accessible
+        // Fallback to simple query to ensure UI isn't empty
         const fallback = await supabase.from("llm_prompt_chains")
           .select("id, created_datetime_utc")
           .order("id", { ascending: false })
@@ -85,15 +99,14 @@ export default function LLMManager() {
         
         if (fallback.data) {
           setChains(fallback.data as any)
-          setError(`Note: Using simplified view due to join error.`)
+          setError(`Join Error: ${chainsRes.error.message}. Showing simplified list.`)
+        } else if (fallback.error) {
+          setError(`Fatal Error: ${fallback.error.message}`)
         }
       } else if (chainsRes.data) {
         setChains(chainsRes.data as any)
       }
 
-      if (modelsRes.data) setModels(modelsRes.data as any)
-      if (providersRes.data) setProviders(providersRes.data)
-      if (responsesRes.data) setResponses(responsesRes.data as any)
     } catch (e: any) {
       setError(`System Error: ${e.message}`)
     } finally {
@@ -152,17 +165,17 @@ export default function LLMManager() {
   if (loading && chains.length === 0) return (
     <div className="p-12 text-center space-y-4">
       <RefreshCw className="w-8 h-8 animate-spin text-blue-500 mx-auto" />
-      <p className="text-slate-400 font-medium">Initializing LLM Manager...</p>
+      <p className="text-slate-400 font-medium animate-pulse">Synchronizing LLM Settings...</p>
     </div>
   )
 
   return (
     <div className="space-y-12 animate-fade-in-up">
       {error && (
-        <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-3 text-amber-800 text-sm">
-          <AlertCircle className="w-5 h-5 shrink-0" />
-          <p className="font-medium">{error}</p>
-          <button onClick={() => fetchData()} className="ml-auto underline font-bold">Retry</button>
+        <div className="bg-rose-50 border border-red-100 p-4 rounded-2xl flex items-center gap-3 text-rose-800 text-sm shadow-sm animate-shake">
+          <AlertCircle className="w-5 h-5 shrink-0 text-rose-500" />
+          <p className="font-medium flex-1">{error}</p>
+          <button onClick={() => fetchData()} className="bg-white/50 px-3 py-1 rounded-lg hover:bg-white transition-colors font-bold text-xs uppercase tracking-wider">Retry</button>
         </div>
       )}
 
@@ -194,7 +207,7 @@ export default function LLMManager() {
       </div>
 
       {/* Models Section */}
-      <div className="glass-panel p-8">
+      <div className="glass-panel p-8 border-l-4 border-purple-500">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-3">
             <Database className="w-6 h-6 text-purple-500" />
@@ -238,25 +251,25 @@ export default function LLMManager() {
       </div>
 
       {/* Prompt Chains Section */}
-      <div className="glass-panel p-8">
+      <div className="glass-panel p-8 border-l-4 border-amber-500">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-3">
             <Send className="w-6 h-6 text-amber-500" />
             Prompt Chains
           </h2>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 bg-slate-100/50 p-1 rounded-xl">
             <button 
               onClick={() => setChainPage(prev => Math.max(0, prev - 1))}
               disabled={chainPage === 0}
-              className="p-2 rounded-lg hover:bg-slate-100 disabled:opacity-30 transition-colors"
+              className="p-2 rounded-lg hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <span className="text-sm font-bold text-slate-500">Page {chainPage + 1}</span>
+            <span className="text-xs font-bold text-slate-600 px-2 min-w-[80px] text-center uppercase tracking-widest">Page {chainPage + 1}</span>
             <button 
               onClick={() => setChainPage(prev => prev + 1)}
               disabled={chains.length < pageSize}
-              className="p-2 rounded-lg hover:bg-slate-100 disabled:opacity-30 transition-colors"
+              className="p-2 rounded-lg hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
@@ -267,65 +280,70 @@ export default function LLMManager() {
             <thead>
               <tr className="border-b border-slate-200/60 bg-slate-50/50">
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">ID</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Context Image</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Sample Produced Caption</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Created</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Context</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Output Sample</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Timestamp</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {chains.map((chain) => {
-                const request = Array.isArray(chain.caption_requests) ? chain.caption_requests[0] : chain.caption_requests;
-                const image = request?.images;
-                const imageUrl = Array.isArray(image) ? image[0]?.url : image?.url;
-                const imageDesc = Array.isArray(image) ? image[0]?.image_description : image?.image_description;
-                
-                const sampleCaption = Array.isArray(chain.captions) && chain.captions.length > 0 
-                  ? chain.captions[0].caption 
-                  : null;
+                const req = Array.isArray(chain.caption_requests) ? chain.caption_requests[0] : chain.caption_requests;
+                const img = req?.images;
+                const imageUrl = Array.isArray(img) ? img[0]?.url : img?.url;
+                const imageDesc = Array.isArray(img) ? img[0]?.image_description : img?.image_description;
+                const sample = Array.isArray(chain.captions) && chain.captions.length > 0 ? chain.captions[0].caption : null;
 
                 return (
                   <tr key={chain.id} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="p-4 font-bold text-slate-700">#{chain.id}</td>
+                    <td className="p-4 font-mono text-xs font-bold text-slate-400">#{chain.id}</td>
                     <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        {imageUrl ? (
-                          <div className="w-14 h-14 rounded-lg overflow-hidden border border-slate-200 shadow-sm relative group/img shrink-0">
-                            <img src={imageUrl} alt="Chain context" className="w-full h-full object-cover" />
-                            <a href={imageUrl} target="_blank" className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity">
+                      {imageUrl ? (
+                        <div className="flex items-center gap-4">
+                          <div className="w-16 h-16 rounded-xl overflow-hidden border border-white shadow-md relative group/img shrink-0 ring-4 ring-slate-50">
+                            <img src={imageUrl} alt="Context" className="w-full h-full object-cover" />
+                            <a href={imageUrl} target="_blank" className="absolute inset-0 bg-slate-900/40 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity">
                               <ExternalLink className="w-4 h-4 text-white" />
                             </a>
                           </div>
-                        ) : (
-                          <div className="w-14 h-14 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] text-slate-400 shrink-0">No Image</div>
-                        )}
-                        {imageDesc && (
-                          <div className="max-w-[150px] overflow-hidden">
-                            <p className="text-[10px] text-slate-400 font-medium uppercase tracking-tight mb-1">Description</p>
-                            <p className="text-[11px] text-slate-600 line-clamp-2 leading-tight" title={imageDesc}>{imageDesc}</p>
-                          </div>
-                        )}
-                      </div>
+                          {imageDesc && <p className="text-[11px] text-slate-500 italic leading-snug line-clamp-3 max-w-[180px]">{imageDesc}</p>}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-slate-300 italic text-xs">
+                          <ImageIcon className="w-4 h-4" />
+                          <span>No Image Linked</span>
+                        </div>
+                      )}
                     </td>
                     <td className="p-4">
-                      {sampleCaption ? (
-                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 max-w-lg">
-                          <p className="text-sm text-slate-700 font-medium italic leading-relaxed">
-                            "{sampleCaption}"
+                      {sample ? (
+                        <div className="bg-white/80 p-4 rounded-2xl border border-slate-100 shadow-sm max-w-xl group-hover:border-blue-100 group-hover:bg-white transition-all">
+                          <p className="text-sm text-slate-700 font-bold italic leading-relaxed font-serif">
+                            "{sample}"
                           </p>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400 italic">No captions generated</span>
+                        <div className="flex items-center gap-2 text-slate-300 italic text-xs">
+                          <MessageSquare className="w-4 h-4" />
+                          <span>Waiting for results...</span>
+                        </div>
                       )}
                     </td>
-                    <td className="p-4 text-xs text-slate-400 whitespace-nowrap">
-                      {new Date(chain.created_datetime_utc).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                    <td className="p-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest whitespace-nowrap">
+                      {new Date(chain.created_datetime_utc).toLocaleDateString()}
+                      <br />
+                      {new Date(chain.created_datetime_utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </td>
                   </tr>
                 );
               })}
               {chains.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={4} className="p-12 text-center text-slate-400 italic">No prompt chains found</td>
+                  <td colSpan={4} className="p-24 text-center">
+                    <div className="space-y-2">
+                      <Send className="w-12 h-12 text-slate-200 mx-auto" />
+                      <p className="text-slate-400 font-medium">No prompt chains found in history</p>
+                    </div>
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -334,7 +352,7 @@ export default function LLMManager() {
       </div>
 
       {/* Responses (Read Only) */}
-      <div className="glass-panel p-8">
+      <div className="glass-panel p-8 border-l-4 border-emerald-500">
         <h2 className="text-2xl font-bold mb-6 text-slate-800 tracking-tight flex items-center gap-3">
           <MessageSquare className="w-6 h-6 text-emerald-500" />
           Recent Model Responses
@@ -346,9 +364,11 @@ export default function LLMManager() {
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Model: <span className="text-slate-900">{resp.llm_models?.name || resp.model_id}</span>
                 </span>
-                <span className="text-[10px] text-slate-400">Chain ID: {resp.prompt_chain_id}</span>
+                <span className="text-[10px] text-slate-400 font-mono font-bold bg-slate-100 px-2 py-1 rounded">Chain #{resp.prompt_chain_id}</span>
               </div>
-              <p className="text-sm text-slate-700 font-medium italic">&quot;{resp.response_text}&quot;</p>
+              <div className="bg-slate-900/5 p-4 rounded-xl font-mono text-[11px] text-slate-600 leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
+                {resp.response_text}
+              </div>
             </div>
           ))}
         </div>
@@ -386,7 +406,7 @@ export default function LLMManager() {
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-bold text-slate-500 uppercase">Provider Name</label>
-                    <input type="text" value={editingProvider?.name || ""} onChange={e => setEditingProvider({...editingProvider, name: e.target.value})} className="w-full glass-input" required />
+                    <input type="text" value={editingProvider?.name || ""} onChange={setEditingProvider && (e => setEditingProvider({...editingProvider, name: e.target.value}))} className="w-full glass-input" required />
                   </div>
                 </div>
                 <div className="flex gap-3 justify-end pt-4">
