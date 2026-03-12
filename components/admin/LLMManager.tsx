@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { createBrowserClient } from "@/lib/supabase/client"
-import { Database, Plus, Edit2, Trash2, Save, Box, Send, MessageSquare } from "lucide-react"
+import { Database, Plus, Edit2, Trash2, Save, Box, Send, MessageSquare, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react"
 
 interface LLMModel {
   id: number;
@@ -19,7 +19,15 @@ interface LLMProvider {
 
 interface LLMPromptChain {
   id: number;
-  name: string;
+  created_datetime_utc: string;
+  caption_requests?: {
+    images?: {
+      url: string;
+    }
+  };
+  captions?: {
+    caption: string;
+  }[];
 }
 
 interface LLMResponse {
@@ -37,6 +45,8 @@ export default function LLMManager() {
   const [chains, setChains] = useState<LLMPromptChain[]>([])
   const [responses, setResponses] = useState<LLMResponse[]>([])
   const [loading, setLoading] = useState(true)
+  const [chainPage, setChainPage] = useState(0)
+  const pageSize = 20
 
   const [editingModel, setEditingModel] = useState<Partial<LLMModel> | null>(null)
   const [editingProvider, setEditingProvider] = useState<Partial<LLMProvider> | null>(null)
@@ -46,17 +56,20 @@ export default function LLMManager() {
     const [modelsRes, providersRes, chainsRes, responsesRes] = await Promise.all([
       supabase.from("llm_models").select("*, llm_providers(name)").order("id"),
       supabase.from("llm_providers").select("*").order("id"),
-      supabase.from("llm_prompt_chains").select("*").order("id"),
+      supabase.from("llm_prompt_chains")
+        .select("*, caption_requests(images(url)), captions(caption)")
+        .order("id", { ascending: false })
+        .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1),
       supabase.from("llm_model_responses").select("*, llm_models(name)").order("id", { ascending: false }).limit(20)
     ])
 
     if (modelsRes.data) setModels(modelsRes.data as any)
     if (providersRes.data) setProviders(providersRes.data)
-    if (chainsRes.data) setChains(chainsRes.data)
-    if (responsesRes.data) setResponses(responsesRes.data)
+    if (chainsRes.data) setChains(chainsRes.data as any)
+    if (responsesRes.data) setResponses(responsesRes.data as any)
     
     setLoading(false)
-  }, [supabase])
+  }, [supabase, chainPage])
 
   useEffect(() => {
     fetchData()
@@ -106,7 +119,7 @@ export default function LLMManager() {
     else fetchData()
   }
 
-  if (loading) return <div className="p-12 text-center text-slate-400 font-medium animate-pulse">Loading LLM Settings...</div>
+  if (loading && chains.length === 0) return <div className="p-12 text-center text-slate-400 font-medium animate-pulse">Loading LLM Settings...</div>
 
   return (
     <div className="space-y-12 animate-fade-in-up">
@@ -181,19 +194,69 @@ export default function LLMManager() {
         </div>
       </div>
 
-      {/* Prompt Chains (Read Only) */}
+      {/* Prompt Chains Section */}
       <div className="glass-panel p-8">
-        <h2 className="text-2xl font-bold mb-6 text-slate-800 tracking-tight flex items-center gap-3">
-          <Send className="w-6 h-6 text-amber-500" />
-          Prompt Chains
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {chains.map(chain => (
-            <div key={chain.id} className="bg-white/50 p-4 rounded-xl border border-white/60 shadow-sm flex justify-between items-center">
-              <span className="font-bold text-slate-700">{chain.name}</span>
-              <span className="text-[10px] text-slate-400 font-bold bg-slate-100 px-2 py-1 rounded-full">ID: {chain.id}</span>
-            </div>
-          ))}
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-3">
+            <Send className="w-6 h-6 text-amber-500" />
+            Prompt Chains
+          </h2>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setChainPage(prev => Math.max(0, prev - 1))}
+              disabled={chainPage === 0}
+              className="p-2 rounded-lg hover:bg-slate-100 disabled:opacity-30 transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <span className="text-sm font-bold text-slate-500">Page {chainPage + 1}</span>
+            <button 
+              onClick={() => setChainPage(prev => prev + 1)}
+              disabled={chains.length < pageSize}
+              className="p-2 rounded-lg hover:bg-slate-100 disabled:opacity-30 transition-colors"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200/60 bg-slate-50/50">
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">ID</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Image</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Sample Caption</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Created</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {chains.map((chain) => (
+                <tr key={chain.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="p-4 font-bold text-slate-700">#{chain.id}</td>
+                  <td className="p-4">
+                    {chain.caption_requests?.images?.url ? (
+                      <div className="w-12 h-12 rounded-lg overflow-hidden border border-slate-200 shadow-sm relative group/img">
+                        <img src={chain.caption_requests.images.url} alt="Chain context" className="w-full h-full object-cover" />
+                        <a href={chain.caption_requests.images.url} target="_blank" className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity">
+                          <ExternalLink className="w-4 h-4 text-white" />
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] text-slate-400">N/A</div>
+                    )}
+                  </td>
+                  <td className="p-4">
+                    <p className="text-sm text-slate-600 font-medium italic line-clamp-2 max-w-md">
+                      {chain.captions && chain.captions.length > 0 ? `"${chain.captions[0].caption}"` : "No captions generated"}
+                    </p>
+                  </td>
+                  <td className="p-4 text-xs text-slate-400">
+                    {new Date(chain.created_datetime_utc).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
