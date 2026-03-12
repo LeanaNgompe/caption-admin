@@ -146,7 +146,7 @@ export default function ContentManager() {
             <FileText className="w-6 h-6 text-blue-500" />
             Caption Examples
           </h2>
-          <button onClick={() => setEditingExample({})} className="glass-button bg-blue-600 hover:bg-blue-700 flex items-center gap-2">
+          <button onClick={() => setEditingExample({ priority: 0 })} className="glass-button bg-blue-600 hover:bg-blue-700 flex items-center gap-2">
             <Plus className="w-4 h-4" /> Add Example
           </button>
         </div>
@@ -159,7 +159,7 @@ export default function ContentManager() {
                 </div>
                 <div className="flex-1 space-y-2">
                   <div className="flex justify-between">
-                    <span className="text-xs font-bold text-blue-600 uppercase tracking-widest">Example #{ex.id}</span>
+                    <span className="text-xs font-bold text-blue-600 uppercase tracking-widest">Example #{ex.id} (P:{ex.priority})</span>
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => setEditingExample(ex)} className="p-1 text-blue-600 hover:bg-blue-50 rounded"><Edit2 className="w-4 h-4" /></button>
                       <button onClick={() => handleDeleteExample(ex.id)} className="p-1 text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4" /></button>
@@ -182,7 +182,7 @@ export default function ContentManager() {
             <Book className="w-6 h-6 text-purple-500" />
             Slang & Terms
           </h2>
-          <button onClick={() => setEditingTerm({})} className="glass-button bg-purple-600 hover:bg-purple-700 flex items-center gap-2">
+          <button onClick={() => setEditingTerm({ priority: 0 })} className="glass-button bg-purple-600 hover:bg-purple-700 flex items-center gap-2">
             <Plus className="w-4 h-4" /> Add Term
           </button>
         </div>
@@ -223,13 +223,9 @@ export default function ContentManager() {
                     <label className="text-xs font-bold text-slate-500 uppercase">Explanation</label>
                     <textarea value={editingExample.explanation || ""} onChange={e => setEditingExample({...editingExample, explanation: e.target.value})} className="w-full glass-input h-20" required />
                   </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase">Image ID (UUID)</label>
-                    <input type="text" value={editingExample.image_id || ""} onChange={e => setEditingExample({...editingExample, image_id: e.target.value})} className="w-full glass-input" />
-                  </div>
-                  <div>
+                  <div className="col-span-2">
                     <label className="text-xs font-bold text-slate-500 uppercase">Priority</label>
-                    <input type="number" value={editingExample.priority || 0} onChange={e => setEditingExample({...editingExample, priority: parseInt(e.target.value)})} className="w-full glass-input" />
+                    <input type="number" value={editingExample.priority ?? 0} onChange={e => setEditingExample({...editingExample, priority: parseInt(e.target.value)})} className="w-full glass-input" />
                   </div>
                 </div>
                 <div className="flex gap-3 justify-end pt-4">
