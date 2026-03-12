@@ -25,7 +25,8 @@ export default function Navbar() {
   ]
 
   return (
-    <nav className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-[95%] max-w-5xl glass-panel px-6 py-3 flex items-center justify-between transition-all duration-300">
+    <div className="fixed top-4 left-0 right-0 z-50 px-6 pointer-events-none">
+      <nav className="max-w-7xl mx-auto glass-panel px-6 py-3 flex items-center justify-between transition-all duration-300 pointer-events-auto">
       <div className="flex items-center gap-8">
         <Link href="/admin" className="text-xl font-bold tracking-tight text-slate-800 hover:opacity-80 transition-opacity flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-500 to-purple-600 shadow-md flex items-center justify-center text-white text-xs font-bold">
@@ -70,5 +71,6 @@ export default function Navbar() {
         </form>
       </div>
     </nav>
+    </div>
   )
 }
