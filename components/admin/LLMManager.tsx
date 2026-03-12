@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { createBrowserClient } from "@/lib/supabase/client"
-import { Database, Plus, Edit2, Trash2, Save, Box, Send, MessageSquare, ExternalLink, ChevronLeft, ChevronRight, Info } from "lucide-react"
+import { Database, Plus, Edit2, Trash2, Save, Box, Send, MessageSquare, ExternalLink, ChevronLeft, ChevronRight, AlertCircle, RefreshCw } from "lucide-react"
 
 interface LLMModel {
   id: number;
@@ -40,6 +40,7 @@ export default function LLMManager() {
   const [responses, setResponses] = useState<LLMResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [chainPage, setChainPage] = useState(0)
+  const [error, setError] = useState<string | null>(null)
   const pageSize = 20
 
   const [editingModel, setEditingModel] = useState<Partial<LLMModel> | null>(null)
@@ -47,41 +48,57 @@ export default function LLMManager() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    setError(null)
     
-    // Explicitly select the nested structure
-    const [modelsRes, providersRes, chainsRes, responsesRes] = await Promise.all([
-      supabase.from("llm_models").select("*, llm_providers(name)").order("id"),
-      supabase.from("llm_providers").select("*").order("id"),
-      supabase.from("llm_prompt_chains")
-        .select(`
-          id, 
-          created_datetime_utc, 
-          caption_requests (
-            images (
-              url,
-              image_description
+    try {
+      const [modelsRes, providersRes, chainsRes, responsesRes] = await Promise.all([
+        supabase.from("llm_models").select("*, llm_providers(name)").order("id"),
+        supabase.from("llm_providers").select("*").order("id"),
+        supabase.from("llm_prompt_chains")
+          .select(`
+            id, 
+            created_datetime_utc, 
+            caption_requests (
+              images (
+                url,
+                image_description
+              )
+            ),
+            captions (
+              caption
             )
-          ),
-          captions (
-            caption
-          )
-        `)
-        .order("id", { ascending: false })
-        .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1),
-      supabase.from("llm_model_responses").select("*, llm_models(name)").order("id", { ascending: false }).limit(20)
-    ])
+          `)
+          .order("id", { ascending: false })
+          .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1),
+        supabase.from("llm_model_responses").select("*, llm_models(name)").order("id", { ascending: false }).limit(20)
+      ])
 
-    if (chainsRes.error) {
-      console.error("Chains fetch error:", chainsRes.error)
-    } else if (chainsRes.data) {
-      setChains(chainsRes.data as any)
+      if (chainsRes.error) {
+        console.error("Chains fetch error:", chainsRes.error)
+        setError(`Chains Error: ${chainsRes.error.message}`)
+        
+        // Fallback to simple query to see if table exists/accessible
+        const fallback = await supabase.from("llm_prompt_chains")
+          .select("id, created_datetime_utc")
+          .order("id", { ascending: false })
+          .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1)
+        
+        if (fallback.data) {
+          setChains(fallback.data as any)
+          setError(`Note: Using simplified view due to join error.`)
+        }
+      } else if (chainsRes.data) {
+        setChains(chainsRes.data as any)
+      }
+
+      if (modelsRes.data) setModels(modelsRes.data as any)
+      if (providersRes.data) setProviders(providersRes.data)
+      if (responsesRes.data) setResponses(responsesRes.data as any)
+    } catch (e: any) {
+      setError(`System Error: ${e.message}`)
+    } finally {
+      setLoading(false)
     }
-
-    if (modelsRes.data) setModels(modelsRes.data as any)
-    if (providersRes.data) setProviders(providersRes.data)
-    if (responsesRes.data) setResponses(responsesRes.data as any)
-    
-    setLoading(false)
   }, [supabase, chainPage])
 
   useEffect(() => {
@@ -132,10 +149,23 @@ export default function LLMManager() {
     else fetchData()
   }
 
-  if (loading && chains.length === 0) return <div className="p-12 text-center text-slate-400 font-medium animate-pulse">Loading LLM Settings...</div>
+  if (loading && chains.length === 0) return (
+    <div className="p-12 text-center space-y-4">
+      <RefreshCw className="w-8 h-8 animate-spin text-blue-500 mx-auto" />
+      <p className="text-slate-400 font-medium">Initializing LLM Manager...</p>
+    </div>
+  )
 
   return (
     <div className="space-y-12 animate-fade-in-up">
+      {error && (
+        <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-3 text-amber-800 text-sm">
+          <AlertCircle className="w-5 h-5 shrink-0" />
+          <p className="font-medium">{error}</p>
+          <button onClick={() => fetchData()} className="ml-auto underline font-bold">Retry</button>
+        </div>
+      )}
+
       {/* Providers Section */}
       <div className="glass-panel p-8">
         <div className="flex justify-between items-center mb-6">
@@ -244,7 +274,6 @@ export default function LLMManager() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {chains.map((chain) => {
-                // Supabase joins can return an object or an array depending on cardinality
                 const request = Array.isArray(chain.caption_requests) ? chain.caption_requests[0] : chain.caption_requests;
                 const image = request?.images;
                 const imageUrl = Array.isArray(image) ? image[0]?.url : image?.url;
@@ -252,7 +281,7 @@ export default function LLMManager() {
                 
                 const sampleCaption = Array.isArray(chain.captions) && chain.captions.length > 0 
                   ? chain.captions[0].caption 
-                  : "No captions";
+                  : null;
 
                 return (
                   <tr key={chain.id} className="hover:bg-slate-50/50 transition-colors group">
@@ -278,11 +307,15 @@ export default function LLMManager() {
                       </div>
                     </td>
                     <td className="p-4">
-                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 max-w-lg">
-                        <p className="text-sm text-slate-700 font-medium italic leading-relaxed">
-                          {sampleCaption !== "No captions" ? `"${sampleCaption}"` : "No captions generated for this chain"}
-                        </p>
-                      </div>
+                      {sampleCaption ? (
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 max-w-lg">
+                          <p className="text-sm text-slate-700 font-medium italic leading-relaxed">
+                            "{sampleCaption}"
+                          </p>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">No captions generated</span>
+                      )}
                     </td>
                     <td className="p-4 text-xs text-slate-400 whitespace-nowrap">
                       {new Date(chain.created_datetime_utc).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
@@ -321,7 +354,7 @@ export default function LLMManager() {
         </div>
       </div>
 
-      {/* Modals for Models & Providers */}
+      {/* Modals */}
       {(editingModel || editingProvider) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm" onClick={() => { setEditingModel(null); setEditingProvider(null); }}>
           <div className="glass-panel p-8 w-full max-w-lg animate-fade-in-up" onClick={e => e.stopPropagation()}>
