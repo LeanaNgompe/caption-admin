@@ -6,23 +6,24 @@ import { Activity, Layers, Sliders, RefreshCw } from "lucide-react"
 
 interface HumorFlavor {
   id: number;
-  name: string;
+  slug: string;
+  description: string;
   created_datetime_utc: string;
 }
 
 interface HumorFlavorStep {
   id: number;
   humor_flavor_id: number;
-  step_type_id: number;
-  order_index: number;
-  // ... other fields?
+  humor_flavor_step_type_id: number;
+  order_by: number;
+  description: string;
 }
 
 interface HumorFlavorMix {
   id: number;
   humor_flavor_id: number;
   caption_count: number;
-  humor_flavors?: { name: string };
+  humor_flavors?: { slug: string };
 }
 
 export default function HumorManager() {
@@ -37,8 +38,8 @@ export default function HumorManager() {
     setLoading(true)
     const [flavorsRes, stepsRes, mixRes] = await Promise.all([
       supabase.from("humor_flavors").select("*").order("id"),
-      supabase.from("humor_flavor_steps").select("*").order("humor_flavor_id, order_index"),
-      supabase.from("humor_flavor_mix").select("*, humor_flavors(name)").order("id")
+      supabase.from("humor_flavor_steps").select("*").order("humor_flavor_id, order_by"),
+      supabase.from("humor_flavor_mix").select("*, humor_flavors(slug)").order("id")
     ])
 
     if (flavorsRes.data) setFlavors(flavorsRes.data)
@@ -75,9 +76,12 @@ export default function HumorManager() {
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {flavors.map(flavor => (
-            <div key={flavor.id} className="bg-white/50 p-4 rounded-xl border border-white/60 shadow-sm flex justify-between items-center">
-              <span className="font-bold text-slate-700">{flavor.name}</span>
-              <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold bg-slate-100 px-2 py-1 rounded-full">ID: {flavor.id}</span>
+            <div key={flavor.id} className="bg-white/50 p-4 rounded-xl border border-white/60 shadow-sm flex flex-col gap-2">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-slate-700">{flavor.slug}</span>
+                <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold bg-slate-100 px-2 py-1 rounded-full">ID: {flavor.id}</span>
+              </div>
+              {flavor.description && <p className="text-xs text-slate-500 line-clamp-2">{flavor.description}</p>}
             </div>
           ))}
         </div>
@@ -101,7 +105,7 @@ export default function HumorManager() {
             <tbody className="divide-y divide-slate-100">
               {mix.map((m) => (
                 <tr key={m.id} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="p-4 font-medium text-slate-700">{m.humor_flavors?.name || `Flavor ID: ${m.humor_flavor_id}`}</td>
+                  <td className="p-4 font-medium text-slate-700">{m.humor_flavors?.slug || `Flavor ID: ${m.humor_flavor_id}`}</td>
                   <td className="p-4">
                     <input 
                       type="number" 
@@ -139,6 +143,7 @@ export default function HumorManager() {
               <tr className="border-b border-slate-200/60 bg-slate-50/50">
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Flavor ID</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Order</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Description</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Step Type ID</th>
               </tr>
             </thead>
@@ -147,9 +152,10 @@ export default function HumorManager() {
                 <tr key={step.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="p-4 font-mono text-xs text-slate-500">{step.humor_flavor_id}</td>
                   <td className="p-4 text-center">
-                    <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-bold">#{step.order_index}</span>
+                    <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-bold">#{step.order_by}</span>
                   </td>
-                  <td className="p-4 text-sm text-slate-600 font-medium">Step Type: {step.step_type_id}</td>
+                  <td className="p-4 text-sm text-slate-600">{step.description}</td>
+                  <td className="p-4 text-sm text-slate-400 font-medium">Type: {step.humor_flavor_step_type_id}</td>
                 </tr>
               ))}
             </tbody>
@@ -159,3 +165,4 @@ export default function HumorManager() {
     </div>
   )
 }
+
