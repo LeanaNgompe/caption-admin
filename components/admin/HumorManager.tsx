@@ -17,6 +17,10 @@ interface HumorFlavorStep {
   humor_flavor_step_type_id: number;
   order_by: number;
   description: string;
+  llm_temperature: number;
+  llm_system_prompt: string;
+  llm_user_prompt: string;
+  humor_flavors?: { slug: string };
 }
 
 interface HumorFlavorMix {
@@ -38,13 +42,13 @@ export default function HumorManager() {
     setLoading(true)
     const [flavorsRes, stepsRes, mixRes] = await Promise.all([
       supabase.from("humor_flavors").select("*").order("id"),
-      supabase.from("humor_flavor_steps").select("*").order("humor_flavor_id, order_by"),
+      supabase.from("humor_flavor_steps").select("*, humor_flavors(slug)").order("humor_flavor_id, order_by"),
       supabase.from("humor_flavor_mix").select("*, humor_flavors(slug)").order("id")
     ])
 
-    if (flavorsRes.data) setFlavors(flavorsRes.data)
-    if (stepsRes.data) setSteps(stepsRes.data)
-    if (mixRes.data) setMix(mixRes.data)
+    if (flavorsRes.data) setFlavors(flavorsRes.data as any)
+    if (stepsRes.data) setSteps(stepsRes.data as any)
+    if (mixRes.data) setMix(mixRes.data as any)
     
     setLoading(false)
   }, [supabase])
@@ -141,21 +145,33 @@ export default function HumorManager() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200/60 bg-slate-50/50">
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Flavor ID</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Flavor</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Order</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Description</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Step Type ID</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Temp</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">System Prompt</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">User Prompt</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {steps.map((step) => (
                 <tr key={step.id} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="p-4 font-mono text-xs text-slate-500">{step.humor_flavor_id}</td>
+                  <td className="p-4 font-bold text-slate-700">{step.humor_flavors?.slug || step.humor_flavor_id}</td>
                   <td className="p-4 text-center">
                     <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-bold">#{step.order_by}</span>
                   </td>
                   <td className="p-4 text-sm text-slate-600">{step.description}</td>
-                  <td className="p-4 text-sm text-slate-400 font-medium">Type: {step.humor_flavor_step_type_id}</td>
+                  <td className="p-4 text-center text-xs font-mono text-blue-600">{step.llm_temperature}</td>
+                  <td className="p-4">
+                    <div className="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-slate-400 font-mono bg-slate-50 p-1 rounded" title={step.llm_system_prompt}>
+                      {step.llm_system_prompt}
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <div className="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-slate-400 font-mono bg-slate-50 p-1 rounded" title={step.llm_user_prompt}>
+                      {step.llm_user_prompt}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
