@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { createBrowserClient } from "@/lib/supabase/client"
-import { Database, Plus, Edit2, Trash2, Save, Box, Send, MessageSquare, ExternalLink, ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Image as ImageIcon } from "lucide-react"
+import { Database, Plus, Edit2, Trash2, Save, Box, Send, MessageSquare, ExternalLink, ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Image as ImageIcon, Clock, Terminal } from "lucide-react"
 
 interface LLMModel {
   id: number;
@@ -32,11 +32,14 @@ interface LLMPromptChain {
 }
 
 interface LLMResponse {
-  id: number;
-  model_id: number;
-  prompt_chain_id: number;
-  response_text: string;
+  id: string;
+  created_datetime_utc: string;
+  llm_model_response: string;
+  processing_time_seconds: number;
+  llm_system_prompt: string;
+  llm_user_prompt: string;
   llm_models?: { name: string };
+  humor_flavor_steps?: { description: string };
 }
 
 export default function LLMManager() {
@@ -46,9 +49,14 @@ export default function LLMManager() {
   const [chains, setChains] = useState<LLMPromptChain[]>([])
   const [responses, setResponses] = useState<LLMResponse[]>([])
   const [loading, setLoading] = useState(true)
+  
+  // Pagination
   const [chainPage, setChainPage] = useState(0)
-  const [error, setError] = useState<string | null>(null)
+  const [responsePage, setResponsePage] = useState(0)
   const pageSize = 20
+
+  const [error, setError] = useState<string | null>(null)
+  const [expandedText, setExpandedText] = useState<{ title: string, text: string } | null>(null)
 
   const [editingModel, setEditingModel] = useState<Partial<LLMModel> | null>(null)
   const [editingProvider, setEditingProvider] = useState<Partial<LLMProvider> | null>(null)
@@ -58,19 +66,16 @@ export default function LLMManager() {
     setError(null)
     
     try {
-      // 1. Fetch Models & Providers (Independent)
-      const [modelsRes, providersRes, responsesRes] = await Promise.all([
+      // 1. Fetch Models & Providers
+      const [modelsRes, providersRes] = await Promise.all([
         supabase.from("llm_models").select("*, llm_providers(name)").order("id"),
         supabase.from("llm_providers").select("*").order("id"),
-        supabase.from("llm_model_responses").select("*, llm_models(name)").order("id", { ascending: false }).limit(20)
       ])
 
       if (modelsRes.data) setModels(modelsRes.data as any)
       if (providersRes.data) setProviders(providersRes.data)
-      if (responsesRes.data) setResponses(responsesRes.data as any)
 
-      // 2. Fetch Prompt Chains with simplified join
-      // Based on diagnostic: pc.caption_request_id -> cr.id, cr.image_id -> img.id
+      // 2. Fetch Prompt Chains
       const chainsRes = await supabase.from("llm_prompt_chains")
         .select(`
           id, 
@@ -88,23 +93,28 @@ export default function LLMManager() {
         .order("id", { ascending: false })
         .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1)
 
-      if (chainsRes.error) {
-        console.error("Chains complex fetch error:", chainsRes.error)
-        
-        // Fallback to simple query to ensure UI isn't empty
-        const fallback = await supabase.from("llm_prompt_chains")
-          .select("id, created_datetime_utc")
-          .order("id", { ascending: false })
-          .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1)
-        
-        if (fallback.data) {
-          setChains(fallback.data as any)
-          setError(`Join Error: ${chainsRes.error.message}. Showing simplified list.`)
-        } else if (fallback.error) {
-          setError(`Fatal Error: ${fallback.error.message}`)
-        }
-      } else if (chainsRes.data) {
-        setChains(chainsRes.data as any)
+      if (chainsRes.data) setChains(chainsRes.data as any)
+      else if (chainsRes.error) console.error("Chains error:", chainsRes.error)
+
+      // 3. Fetch Model Responses
+      const responsesRes = await supabase.from("llm_model_responses")
+        .select(`
+          id,
+          created_datetime_utc,
+          llm_model_response,
+          processing_time_seconds,
+          llm_system_prompt,
+          llm_user_prompt,
+          llm_models ( name ),
+          humor_flavor_steps ( description )
+        `)
+        .order("created_datetime_utc", { ascending: false })
+        .range(responsePage * pageSize, (responsePage + 1) * pageSize - 1)
+
+      if (responsesRes.data) setResponses(responsesRes.data as any)
+      else if (responsesRes.error) {
+        console.error("Responses error:", responsesRes.error)
+        setError(`Failed to fetch responses: ${responsesRes.error.message}`)
       }
 
     } catch (e: any) {
@@ -112,7 +122,7 @@ export default function LLMManager() {
     } finally {
       setLoading(false)
     }
-  }, [supabase, chainPage])
+  }, [supabase, chainPage, responsePage])
 
   useEffect(() => {
     fetchData()
@@ -162,15 +172,15 @@ export default function LLMManager() {
     else fetchData()
   }
 
-  if (loading && chains.length === 0) return (
+  if (loading && chains.length === 0 && responses.length === 0) return (
     <div className="p-12 text-center space-y-4">
       <RefreshCw className="w-8 h-8 animate-spin text-blue-500 mx-auto" />
-      <p className="text-slate-400 font-medium animate-pulse">Synchronizing LLM Settings...</p>
+      <p className="text-slate-400 font-medium animate-pulse">Initializing LLM Manager...</p>
     </div>
   )
 
   return (
-    <div className="space-y-12 animate-fade-in-up">
+    <div className="space-y-12 animate-fade-in-up pb-24">
       {error && (
         <div className="bg-rose-50 border border-red-100 p-4 rounded-2xl flex items-center gap-3 text-rose-800 text-sm shadow-sm animate-shake">
           <AlertCircle className="w-5 h-5 shrink-0 text-rose-500" />
@@ -192,7 +202,7 @@ export default function LLMManager() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {providers.map(p => (
-            <div key={p.id} className="bg-white/50 p-6 rounded-2xl border border-white/60 shadow-sm group">
+            <div key={p.id} className="bg-white/50 p-6 rounded-2xl border border-white/60 shadow-sm group text-left">
               <div className="flex justify-between items-start mb-2">
                 <span className="font-bold text-slate-800 text-lg">{p.name}</span>
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -316,7 +326,10 @@ export default function LLMManager() {
                     </td>
                     <td className="p-4">
                       {sample ? (
-                        <div className="bg-white/80 p-4 rounded-2xl border border-slate-100 shadow-sm max-w-xl group-hover:border-blue-100 group-hover:bg-white transition-all">
+                        <div 
+                          className="bg-white/80 p-4 rounded-2xl border border-slate-100 shadow-sm max-w-xl group-hover:border-blue-100 group-hover:bg-white transition-all cursor-pointer"
+                          onClick={() => setExpandedText({ title: "Produced Caption", text: sample })}
+                        >
                           <p className="text-sm text-slate-700 font-bold italic leading-relaxed font-serif">
                             "{sample}"
                           </p>
@@ -336,45 +349,114 @@ export default function LLMManager() {
                   </tr>
                 );
               })}
-              {chains.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={4} className="p-24 text-center">
-                    <div className="space-y-2">
-                      <Send className="w-12 h-12 text-slate-200 mx-auto" />
-                      <p className="text-slate-400 font-medium">No prompt chains found in history</p>
-                    </div>
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Responses (Read Only) */}
+      {/* Model Responses Section */}
       <div className="glass-panel p-8 border-l-4 border-emerald-500">
-        <h2 className="text-2xl font-bold mb-6 text-slate-800 tracking-tight flex items-center gap-3">
-          <MessageSquare className="w-6 h-6 text-emerald-500" />
-          Recent Model Responses
-        </h2>
-        <div className="space-y-4">
-          {responses.map(resp => (
-            <div key={resp.id} className="bg-white/40 p-6 rounded-2xl border border-white/50 shadow-sm backdrop-blur-md">
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Model: <span className="text-slate-900">{resp.llm_models?.name || resp.model_id}</span>
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono font-bold bg-slate-100 px-2 py-1 rounded">Chain #{resp.prompt_chain_id}</span>
-              </div>
-              <div className="bg-slate-900/5 p-4 rounded-xl font-mono text-[11px] text-slate-600 leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
-                {resp.response_text}
-              </div>
-            </div>
-          ))}
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-3">
+            <MessageSquare className="w-6 h-6 text-emerald-500" />
+            Model Responses
+          </h2>
+          <div className="flex items-center gap-2 bg-slate-100/50 p-1 rounded-xl">
+            <button 
+              onClick={() => setResponsePage(prev => Math.max(0, prev - 1))}
+              disabled={responsePage === 0}
+              className="p-2 rounded-lg hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <span className="text-xs font-bold text-slate-600 px-2 min-w-[80px] text-center uppercase tracking-widest">Page {responsePage + 1}</span>
+            <button 
+              onClick={() => setResponsePage(prev => prev + 1)}
+              disabled={responses.length < pageSize}
+              className="p-2 rounded-lg hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200/60 bg-slate-50/50">
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Model</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Response</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Prompts</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Time</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Flavor Step</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {responses.map((resp) => (
+                <tr key={resp.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="p-4">
+                    <span className="font-bold text-slate-700 text-sm whitespace-nowrap">{resp.llm_models?.name || "Unknown"}</span>
+                  </td>
+                  <td className="p-4 max-w-md">
+                    <div 
+                      className="bg-emerald-50/30 p-3 rounded-xl border border-emerald-100/50 cursor-pointer hover:bg-emerald-50 transition-colors"
+                      onClick={() => setExpandedText({ title: "Model Response", text: resp.llm_model_response })}
+                    >
+                      <p className="text-xs text-slate-600 line-clamp-3 font-mono leading-relaxed">{resp.llm_model_response}</p>
+                    </div>
+                  </td>
+                  <td className="p-4 space-y-2">
+                    <button 
+                      onClick={() => setExpandedText({ title: "System Prompt", text: resp.llm_system_prompt })}
+                      className="flex items-center gap-2 text-[10px] font-bold text-blue-600 uppercase tracking-widest hover:bg-blue-50 px-2 py-1 rounded transition-colors w-full"
+                    >
+                      <Terminal className="w-3 h-3" /> System Prompt
+                    </button>
+                    <button 
+                      onClick={() => setExpandedText({ title: "User Prompt", text: resp.llm_user_prompt })}
+                      className="flex items-center gap-2 text-[10px] font-bold text-indigo-600 uppercase tracking-widest hover:bg-indigo-50 px-2 py-1 rounded transition-colors w-full"
+                    >
+                      <Terminal className="w-3 h-3" /> User Prompt
+                    </button>
+                  </td>
+                  <td className="p-4 text-center">
+                    <div className="flex flex-col items-center gap-1">
+                      <Clock className="w-3 h-3 text-slate-300" />
+                      <span className="text-xs font-bold text-slate-500">{resp.processing_time_seconds}s</span>
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <p className="text-[11px] text-slate-500 italic max-w-[150px] line-clamp-2">
+                      {resp.humor_flavor_steps?.description || "Generic Step"}
+                    </p>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* Modals */}
+      {/* Expanded Text Modal */}
+      {expandedText && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-md" onClick={() => setExpandedText(null)}>
+          <div className="glass-panel p-8 w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col animate-fade-in-up" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-slate-800 flex items-center gap-3">
+                <Info className="w-6 h-6 text-blue-500" />
+                {expandedText.title}
+              </h3>
+              <button onClick={() => setExpandedText(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                <Plus className="w-6 h-6 transform rotate-45 text-slate-400" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto bg-slate-50 p-6 rounded-2xl border border-slate-100 font-mono text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+              {expandedText.text}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modals for Models & Providers */}
       {(editingModel || editingProvider) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm" onClick={() => { setEditingModel(null); setEditingProvider(null); }}>
           <div className="glass-panel p-8 w-full max-w-lg animate-fade-in-up" onClick={e => e.stopPropagation()}>
@@ -406,7 +488,7 @@ export default function LLMManager() {
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-bold text-slate-500 uppercase">Provider Name</label>
-                    <input type="text" value={editingProvider?.name || ""} onChange={setEditingProvider && (e => setEditingProvider({...editingProvider, name: e.target.value}))} className="w-full glass-input" required />
+                    <input type="text" value={editingProvider?.name || ""} onChange={e => setEditingProvider({...editingProvider, name: e.target.value})} className="w-full glass-input" required />
                   </div>
                 </div>
                 <div className="flex gap-3 justify-end pt-4">
