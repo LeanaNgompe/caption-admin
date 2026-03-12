@@ -2,7 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { createBrowserClient } from "@/lib/supabase/client"
-import { Plus, Trash2, Edit2, X, Save, Image as ImageIcon } from "lucide-react"
+import { Plus, Trash2, Edit2, X, Save, Image as ImageIcon, Upload, Loader2 } from "lucide-react"
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
 
 interface Image {
   id: string;
@@ -16,6 +22,7 @@ export default function ImagesManager() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [newUrl, setNewUrl] = useState("")
+  const [uploading, setUploading] = useState(false)
   const [editingImage, setEditingImage] = useState<Image | null>(null)
 
   const fetchImages = useCallback(async () => {
@@ -38,13 +45,46 @@ export default function ImagesManager() {
     e.preventDefault()
     if (!newUrl) return
     
-    const { data, error } = await supabase.from("images").insert([{ url: newUrl }]).select()
+    const { error } = await supabase.from("images").insert([{ url: newUrl }])
     
     if (error) {
       alert("Create failed: " + error.message)
     } else {
       setNewUrl("")
       fetchImages()
+    }
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return
+    const file = e.target.files[0]
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${Math.random()}.${fileExt}`
+    const filePath = `${fileName}`
+
+    setUploading(true)
+    try {
+      const { error: uploadError, data } = await supabase.storage
+        .from('images')
+        .upload(filePath, file)
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('images')
+        .getPublicUrl(filePath)
+
+      const { error: insertError } = await supabase
+        .from('images')
+        .insert([{ url: publicUrl }])
+
+      if (insertError) throw insertError
+
+      fetchImages()
+    } catch (err: any) {
+      alert(err.message)
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -81,22 +121,43 @@ export default function ImagesManager() {
           Image Management
         </h2>
 
-        <form onSubmit={handleCreate} className="flex gap-4 items-end bg-white/40 p-6 rounded-2xl border border-white/50 shadow-sm backdrop-blur-md">
-          <div className="flex-1 space-y-2">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">New Image URL</label>
-            <input
-              type="text"
-              placeholder="https://example.com/image.jpg"
-              value={newUrl}
-              onChange={(e) => setNewUrl(e.target.value)}
-              className="w-full glass-input"
-            />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <form onSubmit={handleCreate} className="flex gap-4 items-end bg-white/40 p-6 rounded-2xl border border-white/50 shadow-sm backdrop-blur-md">
+            <div className="flex-1 space-y-2">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">New Image URL</label>
+              <input
+                type="text"
+                placeholder="https://example.com/image.jpg"
+                value={newUrl}
+                onChange={(e) => setNewUrl(e.target.value)}
+                className="w-full glass-input"
+              />
+            </div>
+            <button type="submit" className="glass-button bg-blue-600 hover:bg-blue-700 flex items-center gap-2 mb-[2px]">
+              <Plus className="w-4 h-4" />
+              Add URL
+            </button>
+          </form>
+
+          <div className="flex flex-col gap-2 bg-white/40 p-6 rounded-2xl border border-white/50 shadow-sm backdrop-blur-md relative overflow-hidden">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Upload New Image</label>
+            <label className={cn(
+              "flex-1 flex flex-col items-center justify-center border-2 border-dashed rounded-xl cursor-pointer transition-all duration-300",
+              uploading ? "bg-slate-50 border-blue-300 animate-pulse" : "bg-slate-50/50 border-slate-200 hover:border-blue-400 hover:bg-blue-50/30"
+            )}>
+              {uploading ? (
+                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+              ) : (
+                <>
+                  <Upload className="w-8 h-8 text-slate-400 mb-2" />
+                  <span className="text-sm font-medium text-slate-500">Click to upload file</span>
+                  <span className="text-[10px] text-slate-400">PNG, JPG or WEBP</span>
+                </>
+              )}
+              <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} disabled={uploading} />
+            </label>
           </div>
-          <button type="submit" className="glass-button bg-blue-600 hover:bg-blue-700 flex items-center gap-2 mb-[2px]">
-            <Plus className="w-4 h-4" />
-            Add Image
-          </button>
-        </form>
+        </div>
       </div>
 
       {editingImage && (

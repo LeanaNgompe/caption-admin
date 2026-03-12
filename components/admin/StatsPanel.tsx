@@ -206,7 +206,7 @@ export default function StatsPanel() {
           <ul className="space-y-3">
             {recentData.captions.map((cap) => (
               <li key={cap.id} className="text-sm text-slate-600 border-b border-slate-100 pb-2 last:border-0">
-                <p className="line-clamp-2 italic">"{cap.content}"</p>
+                <p className="line-clamp-2 italic">&quot;{cap.content}&quot;</p>
               </li>
             ))}
           </ul>

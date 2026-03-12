@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Image as ImageIcon, FileText, Users, LogOut } from "lucide-react"
+import { Home, Image as ImageIcon, FileText, Users, LogOut, Activity, Database, Shield } from "lucide-react"
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -18,6 +18,10 @@ export default function Navbar() {
     { href: "/admin/images", label: "Images", icon: ImageIcon },
     { href: "/admin/captions", label: "Captions", icon: FileText },
     { href: "/admin/users", label: "Users", icon: Users },
+    { href: "/admin/humor", label: "Humor", icon: Activity },
+    { href: "/admin/llm", label: "LLM", icon: Database },
+    { href: "/admin/auth", label: "Auth", icon: Shield },
+    { href: "/admin/content", label: "Content", icon: FileText },
   ]
 
   return (

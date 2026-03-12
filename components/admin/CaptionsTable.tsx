@@ -59,7 +59,7 @@ export default async function CaptionsTable() {
                     </div>
                   </td>
                   <td className="p-4">
-                    <p className="text-sm text-slate-700 font-medium line-clamp-2 italic">"{cap.content}"</p>
+                    <p className="text-sm text-slate-700 font-medium line-clamp-2 italic">&quot;{cap.content}&quot;</p>
                   </td>
                   <td className="p-4 text-center">{formatBool(cap.is_public)}</td>
                   <td className="p-4 text-center">{formatBool(cap.is_featured)}</td>
