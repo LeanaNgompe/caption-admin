@@ -7,15 +7,14 @@ import { Database, Plus, Edit2, Trash2, Save, Box, Send, MessageSquare } from "l
 interface LLMModel {
   id: number;
   name: string;
-  provider_id: number;
-  model_identifier: string;
+  llm_provider_id: number;
+  provider_model_id: string;
   llm_providers?: { name: string };
 }
 
 interface LLMProvider {
   id: number;
   name: string;
-  base_url: string;
 }
 
 interface LLMPromptChain {
@@ -51,7 +50,7 @@ export default function LLMManager() {
       supabase.from("llm_model_responses").select("*, llm_models(name)").order("id", { ascending: false }).limit(20)
     ])
 
-    if (modelsRes.data) setModels(modelsRes.data)
+    if (modelsRes.data) setModels(modelsRes.data as any)
     if (providersRes.data) setProviders(providersRes.data)
     if (chainsRes.data) setChains(chainsRes.data)
     if (responsesRes.data) setResponses(responsesRes.data)
@@ -67,7 +66,7 @@ export default function LLMManager() {
   const handleSaveModel = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editingModel) return
-    const { id, ...data } = editingModel
+    const { id, llm_providers: _, ...data } = editingModel as any
     let res
     if (id) {
       res = await supabase.from("llm_models").update(data).eq("id", id)
@@ -132,7 +131,7 @@ export default function LLMManager() {
                   <button onClick={() => handleDeleteProvider(p.id)} className="p-1 text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
-              <p className="text-xs text-slate-400 truncate">{p.base_url}</p>
+              <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold bg-slate-100 px-2 py-1 rounded-full">ID: {p.id}</span>
             </div>
           ))}
         </div>
@@ -163,10 +162,10 @@ export default function LLMManager() {
               {models.map((m) => (
                 <tr key={m.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="p-4 font-bold text-slate-700">{m.name}</td>
-                  <td className="p-4 font-mono text-xs text-slate-500">{m.model_identifier}</td>
+                  <td className="p-4 font-mono text-xs text-slate-500">{m.provider_model_id}</td>
                   <td className="p-4">
                     <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-xs font-bold">
-                      {m.llm_providers?.name || `ID: ${m.provider_id}`}
+                      {m.llm_providers?.name || `ID: ${m.llm_provider_id}`}
                     </span>
                   </td>
                   <td className="p-4 text-right">
@@ -232,12 +231,12 @@ export default function LLMManager() {
                     <input type="text" value={editingModel.name || ""} onChange={e => setEditingModel({...editingModel, name: e.target.value})} className="w-full glass-input" required />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase">Model Identifier</label>
-                    <input type="text" value={editingModel.model_identifier || ""} onChange={e => setEditingModel({...editingModel, model_identifier: e.target.value})} className="w-full glass-input" required />
+                    <label className="text-xs font-bold text-slate-500 uppercase">Model Identifier (provider_model_id)</label>
+                    <input type="text" value={editingModel.provider_model_id || ""} onChange={e => setEditingModel({...editingModel, provider_model_id: e.target.value})} className="w-full glass-input" required />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase">Provider ID</label>
-                    <input type="number" value={editingModel.provider_id || ""} onChange={e => setEditingModel({...editingModel, provider_id: parseInt(e.target.value)})} className="w-full glass-input" required />
+                    <label className="text-xs font-bold text-slate-500 uppercase">Provider ID (llm_provider_id)</label>
+                    <input type="number" value={editingModel.llm_provider_id || ""} onChange={e => setEditingModel({...editingModel, llm_provider_id: parseInt(e.target.value)})} className="w-full glass-input" required />
                   </div>
                 </div>
                 <div className="flex gap-3 justify-end pt-4">
@@ -252,10 +251,6 @@ export default function LLMManager() {
                   <div>
                     <label className="text-xs font-bold text-slate-500 uppercase">Provider Name</label>
                     <input type="text" value={editingProvider?.name || ""} onChange={e => setEditingProvider({...editingProvider, name: e.target.value})} className="w-full glass-input" required />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase">Base URL</label>
-                    <input type="text" value={editingProvider?.base_url || ""} onChange={e => setEditingProvider({...editingProvider, base_url: e.target.value})} className="w-full glass-input" required />
                   </div>
                 </div>
                 <div className="flex gap-3 justify-end pt-4">
