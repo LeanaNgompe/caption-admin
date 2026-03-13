@@ -27,9 +27,8 @@ interface LLMPromptChain {
     }
   };
   captions?: {
-    caption: string;
+    content: string;
   }[];
-  // Extended info for chains
   llm_model_responses?: {
     processing_time_seconds: number;
   }[];
@@ -69,6 +68,7 @@ export default function LLMManager() {
     setError(null)
     
     try {
+      // 1. Fetch Models & Providers
       const [modelsRes, providersRes] = await Promise.all([
         supabase.from("llm_models").select("*, llm_providers(name)").order("id"),
         supabase.from("llm_providers").select("*").order("id"),
@@ -77,6 +77,8 @@ export default function LLMManager() {
       if (modelsRes.data) setModels(modelsRes.data as any)
       if (providersRes.data) setProviders(providersRes.data)
 
+      // 2. Fetch Prompt Chains
+      // FIX: Changed captions(caption) to captions(content)
       const chainsRes = await supabase.from("llm_prompt_chains")
         .select(`
           id, 
@@ -88,7 +90,7 @@ export default function LLMManager() {
             )
           ),
           captions (
-            caption
+            content
           ),
           llm_model_responses (
             processing_time_seconds
@@ -97,9 +99,23 @@ export default function LLMManager() {
         .order("id", { ascending: false })
         .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1)
 
-      if (chainsRes.data) setChains(chainsRes.data as any)
-      else if (chainsRes.error) console.error("Chains error:", chainsRes.error)
+      if (chainsRes.error) {
+        console.error("Chains complex fetch error:", chainsRes.error)
+        // Fallback
+        const fallback = await supabase.from("llm_prompt_chains")
+          .select("id, created_datetime_utc")
+          .order("id", { ascending: false })
+          .range(chainPage * pageSize, (chainPage + 1) * pageSize - 1)
+        
+        if (fallback.data) {
+          setChains(fallback.data as any)
+          setError(`Join Error: ${chainsRes.error.message}. Showing simplified list.`)
+        }
+      } else if (chainsRes.data) {
+        setChains(chainsRes.data as any)
+      }
 
+      // 3. Fetch Model Responses
       const responsesRes = await supabase.from("llm_model_responses")
         .select(`
           id,
@@ -116,7 +132,7 @@ export default function LLMManager() {
 
       if (responsesRes.data) setResponses(responsesRes.data as any)
       else if (responsesRes.error) {
-        setError(`Failed to fetch responses: ${responsesRes.error.message}`)
+        console.error("Responses error:", responsesRes.error)
       }
 
     } catch (e: any) {
@@ -166,12 +182,12 @@ export default function LLMManager() {
   if (loading && chains.length === 0 && responses.length === 0) return (
     <div className="p-12 text-center space-y-4">
       <RefreshCw className="w-8 h-8 animate-spin text-blue-500 mx-auto" />
-      <p className="text-slate-400 font-medium">Initializing LLM Manager...</p>
+      <p className="text-slate-400 font-medium animate-pulse">Synchronizing LLM Settings...</p>
     </div>
   )
 
   return (
-    <div className="space-y-12 animate-fade-in-up pb-24">
+    <div className="space-y-12 animate-fade-in-up pb-24 text-left">
       {error && (
         <div className="bg-rose-50 border border-red-100 p-4 rounded-2xl flex items-center gap-3 text-rose-800 text-sm shadow-sm animate-shake">
           <AlertCircle className="w-5 h-5 shrink-0 text-rose-500" />
@@ -180,9 +196,8 @@ export default function LLMManager() {
         </div>
       )}
 
-      {/* Providers & Models simplified view for brevity in this tool call */}
+      {/* Providers & Models Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Providers Section */}
         <div className="glass-panel p-8">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-3">
@@ -204,7 +219,6 @@ export default function LLMManager() {
           </div>
         </div>
 
-        {/* Models Section */}
         <div className="glass-panel p-8">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-3">
@@ -252,7 +266,7 @@ export default function LLMManager() {
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Context & Status</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Insights</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Latest Output</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Execution</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Execution</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -261,7 +275,8 @@ export default function LLMManager() {
                 const img = req?.images;
                 const imageUrl = Array.isArray(img) ? img[0]?.url : img?.url;
                 const imageDesc = Array.isArray(img) ? img[0]?.image_description : img?.image_description;
-                const sample = Array.isArray(chain.captions) && chain.captions.length > 0 ? chain.captions[0].caption : null;
+                // FIX: Changed chain.captions[0].caption to chain.captions[0].content
+                const sample = Array.isArray(chain.captions) && chain.captions.length > 0 ? chain.captions[0].content : null;
                 
                 const responses = chain.llm_model_responses || [];
                 const totalProcessingTime = responses.reduce((acc, curr) => acc + (curr.processing_time_seconds || 0), 0);
@@ -305,7 +320,7 @@ export default function LLMManager() {
                         <span className="text-[10px] text-slate-300 italic font-medium">Awaiting completion...</span>
                       )}
                     </td>
-                    <td className="p-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest whitespace-nowrap">
+                    <td className="p-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest whitespace-nowrap text-right">
                       {new Date(chain.created_datetime_utc).toLocaleDateString()}
                       <br />
                       <span className="text-slate-300 font-medium">{new Date(chain.created_datetime_utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -313,6 +328,16 @@ export default function LLMManager() {
                   </tr>
                 );
               })}
+              {chains.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={5} className="p-24 text-center">
+                    <div className="space-y-2">
+                      <Send className="w-12 h-12 text-slate-200 mx-auto" />
+                      <p className="text-slate-400 font-medium">No prompt chains found in history</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -343,7 +368,7 @@ export default function LLMManager() {
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Response</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Prompts</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Time</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Flavor Step</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Flavor Step</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -365,7 +390,7 @@ export default function LLMManager() {
                       <span className="text-xs font-bold text-slate-500">{resp.processing_time_seconds}s</span>
                     </div>
                   </td>
-                  <td className="p-4"><p className="text-[11px] text-slate-500 italic max-w-[150px] line-clamp-2">{resp.humor_flavor_steps?.description || "Generic Step"}</p></td>
+                  <td className="p-4 text-right"><p className="text-[11px] text-slate-500 italic max-w-[150px] line-clamp-2 ml-auto">{resp.humor_flavor_steps?.description || "Generic Step"}</p></td>
                 </tr>
               ))}
             </tbody>
