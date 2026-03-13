@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { createBrowserClient } from "@/lib/supabase/client"
-import { FileText, Plus, Trash2, Edit2, Save, HelpCircle, Book } from "lucide-react"
+import { FileText, Plus, Trash2, Edit2, Save, HelpCircle, Book, ChevronLeft, ChevronRight } from "lucide-react"
 
 interface CaptionRequest {
   id: number;
@@ -37,6 +37,10 @@ export default function ContentManager() {
   const [terms, setTerms] = useState<Term[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Pagination for Examples
+  const [examplePage, setExamplePage] = useState(0)
+  const pageSize = 20
+
   const [editingExample, setEditingExample] = useState<Partial<CaptionExample> | null>(null)
   const [editingTerm, setEditingTerm] = useState<Partial<Term> | null>(null)
 
@@ -44,16 +48,20 @@ export default function ContentManager() {
     setLoading(true)
     const [reqsRes, exRes, termsRes] = await Promise.all([
       supabase.from("caption_requests").select("*, images(url)").order("created_datetime_utc", { ascending: false }).limit(20),
-      supabase.from("caption_examples").select("*, images(url)").order("priority", { ascending: false }),
+      supabase.from("caption_examples")
+        .select("*, images(url)")
+        .order("priority", { ascending: false })
+        .order("id", { ascending: false })
+        .range(examplePage * pageSize, (examplePage + 1) * pageSize - 1),
       supabase.from("terms").select("*").order("priority", { ascending: false })
     ])
 
     if (reqsRes.data) setRequests(reqsRes.data)
-    if (exRes.data) setExamples(exRes.data)
+    if (exRes.data) setExamples(exRes.data as any)
     if (termsRes.data) setTerms(termsRes.data)
     
     setLoading(false)
-  }, [supabase])
+  }, [supabase, examplePage])
 
   useEffect(() => {
     fetchData()
@@ -103,10 +111,10 @@ export default function ContentManager() {
     else fetchData()
   }
 
-  if (loading) return <div className="p-12 text-center text-slate-400 font-medium animate-pulse">Loading Content...</div>
+  if (loading && examples.length === 0) return <div className="p-12 text-center text-slate-400 font-medium animate-pulse">Loading Content...</div>
 
   return (
-    <div className="space-y-12 animate-fade-in-up">
+    <div className="space-y-12 animate-fade-in-up pb-24">
       {/* Caption Requests Section */}
       <div className="glass-panel p-8">
         <h2 className="text-2xl font-bold mb-6 text-slate-800 tracking-tight flex items-center gap-3">
@@ -142,10 +150,29 @@ export default function ContentManager() {
       {/* Caption Examples Section */}
       <div className="glass-panel p-8">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-3">
-            <FileText className="w-6 h-6 text-blue-500" />
-            Caption Examples
-          </h2>
+          <div className="flex items-center gap-6">
+            <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-3">
+              <FileText className="w-6 h-6 text-blue-500" />
+              Caption Examples
+            </h2>
+            <div className="flex items-center gap-2 bg-slate-100/50 p-1 rounded-xl">
+              <button 
+                onClick={() => setExamplePage(prev => Math.max(0, prev - 1))}
+                disabled={examplePage === 0}
+                className="p-2 rounded-lg hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <span className="text-xs font-bold text-slate-600 px-2 min-w-[80px] text-center uppercase tracking-widest">Page {examplePage + 1}</span>
+              <button 
+                onClick={() => setExamplePage(prev => prev + 1)}
+                disabled={examples.length < pageSize}
+                className="p-2 rounded-lg hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
           <button onClick={() => setEditingExample({ priority: 0 })} className="glass-button bg-blue-600 hover:bg-blue-700 flex items-center gap-2">
             <Plus className="w-4 h-4" /> Add Example
           </button>
@@ -172,6 +199,11 @@ export default function ContentManager() {
               </div>
             </div>
           ))}
+          {examples.length === 0 && !loading && (
+            <div className="p-12 text-center text-slate-400 italic bg-white/30 rounded-2xl border border-dashed border-slate-200">
+              No examples found on this page
+            </div>
+          )}
         </div>
       </div>
 
