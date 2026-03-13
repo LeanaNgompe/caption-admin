@@ -2,8 +2,7 @@ import CaptionsTable from "@/components/admin/CaptionsTable"
 
 export default function CaptionsPage() {
   return (
-    <div>
-      <h1>Caption Management</h1>
+    <div className="animate-fade-in-up">
       <CaptionsTable />
     </div>
   )

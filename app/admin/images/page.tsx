@@ -2,8 +2,7 @@ import ImagesManager from "@/components/admin/ImagesManager"
 
 export default function ImagesPage() {
   return (
-    <div>
-      <h1>Image Management</h1>
+    <div className="animate-fade-in-up">
       <ImagesManager />
     </div>
   )
