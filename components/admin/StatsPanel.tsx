@@ -5,11 +5,14 @@ import { createBrowserClient } from "@/lib/supabase/client"
 import {
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer
+  ResponsiveContainer,
+  Cell
 } from "recharts"
 import * as d3 from "d3"
 import { 
@@ -18,6 +21,9 @@ import {
   Type, 
   Activity, 
   TrendingUp, 
+  BarChart3,
+  Award,
+  PieChart
 } from "lucide-react"
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
@@ -55,8 +61,16 @@ export default function StatsPanel() {
   const [counts, setCounts] = useState({ users: 0, images: 0, captions: 0, activeToday: 0 })
   const [recentData, setRecentData] = useState<{ images: DBImage[], captions: (Caption & { images?: { url: string } })[] }>({ images: [], captions: [] })
   const [analyticsData, setAnalyticsData] = useState<{
-    memeBirthRate: any[]
-  }>({ memeBirthRate: [] })
+    memeBirthRate: any[],
+    flavorPerformance: any[],
+    modelPerformance: any[],
+    ratingDistribution: any[]
+  }>({ 
+    memeBirthRate: [], 
+    flavorPerformance: [], 
+    modelPerformance: [], 
+    ratingDistribution: [] 
+  })
   const [networkData, setNetworkData] = useState<{ nodes: any[], links: any[] }>({ nodes: [], links: [] })
 
   useEffect(() => {
@@ -113,8 +127,48 @@ export default function StatsPanel() {
         .map(([date, count]) => ({ date, count }))
         .sort((a, b) => a.date.localeCompare(b.date))
 
+        // --- Caption Performance Analytics ---
+        
+        // Fetch captions with flavor and model info for aggregation
+        // We limit this to a representative sample for performance if needed, but let's try a full fetch for counts first
+        const { data: performanceRaw } = await supabase
+          .from("captions")
+          .select("like_count, humor_flavor_id, humor_flavors(slug), llm_model_responses(llm_model_id, llm_models(name))")
+          // No limit for now, but in a real app you'd aggregate this on the DB side via RPC
+        
+        // A. Flavor Performance
+        const flavorPerf = d3.rollups(
+          (performanceRaw || []).filter(c => c.humor_flavors),
+          v => d3.mean(v, d => d.like_count) || 0,
+          d => (d.humor_flavors as any)?.slug || "Unknown"
+        )
+        .map(([slug, avgLikes]) => ({ slug, avgLikes }))
+        .sort((a, b) => b.avgLikes - a.avgLikes)
+        .slice(0, 10) // Top 10 flavors
+
+        // B. Model Performance
+        const modelPerf = d3.rollups(
+          (performanceRaw || []).filter(c => c.llm_model_responses),
+          v => d3.mean(v, d => d.like_count) || 0,
+          d => (d.llm_model_responses as any)?.llm_models?.name || "Unknown"
+        )
+        .map(([name, avgLikes]) => ({ name, avgLikes }))
+        .sort((a, b) => b.avgLikes - a.avgLikes)
+
+        // C. Rating Distribution
+        const ratingDist = d3.rollups(
+          (performanceRaw || []),
+          v => v.length,
+          d => d.like_count
+        )
+        .map(([rating, count]) => ({ rating, count }))
+        .sort((a, b) => a.rating - b.rating)
+
         setAnalyticsData({
-          memeBirthRate: birthRateGrouped
+          memeBirthRate: birthRateGrouped,
+          flavorPerformance: flavorPerf,
+          modelPerformance: modelPerf,
+          ratingDistribution: ratingDist
         })
 
         // 5. Network Visualization Data
@@ -275,6 +329,74 @@ export default function StatsPanel() {
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
+        </div>
+      </div>
+
+      {/* --- PERFORMANCE ANALYTICS --- */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-slate-800 tracking-tight pl-2 flex items-center gap-3">
+          <BarChart3 className="w-6 h-6 text-indigo-500" /> Performance Analytics
+        </h2>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <ChartCard title="Flavor Performance" subtitle="Average likes per humor flavor (Top 10)">
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={analyticsData.flavorPerformance} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e2e8f0" strokeOpacity={0.5} />
+                <XAxis type="number" fontSize={11} stroke="#94a3b8" axisLine={false} tickLine={false} />
+                <YAxis 
+                  dataKey="slug" 
+                  type="category" 
+                  fontSize={10} 
+                  stroke="#64748b" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  width={100}
+                />
+                <Tooltip 
+                  cursor={{ fill: '#f1f5f9' }}
+                  contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)', borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                />
+                <Bar dataKey="avgLikes" radius={[0, 4, 4, 0]}>
+                  {analyticsData.flavorPerformance.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={d3.interpolateSpectral(index / 10)} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="Model Performance" subtitle="Average likes by LLM model">
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={analyticsData.modelPerformance}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" strokeOpacity={0.5} />
+                <XAxis dataKey="name" fontSize={10} stroke="#64748b" axisLine={false} tickLine={false} angle={-15} textAnchor="end" height={60} />
+                <YAxis fontSize={11} stroke="#94a3b8" axisLine={false} tickLine={false} />
+                <Tooltip 
+                  cursor={{ fill: '#f1f5f9' }}
+                  contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)', borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                />
+                <Bar dataKey="avgLikes" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <div className="lg:col-span-2">
+            <ChartCard title="Rating Distribution" subtitle="Frequency of like counts across all captions">
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={analyticsData.ratingDistribution}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" strokeOpacity={0.5} />
+                  <XAxis dataKey="rating" fontSize={11} stroke="#94a3b8" axisLine={false} tickLine={false} label={{ value: 'Likes', position: 'insideBottom', offset: -5, fontSize: 10 }} />
+                  <YAxis fontSize={11} stroke="#94a3b8" axisLine={false} tickLine={false} label={{ value: 'Frequency', angle: -90, position: 'insideLeft', fontSize: 10 }} />
+                  <Tooltip 
+                    cursor={{ fill: '#f1f5f9' }}
+                    contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)', borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                  />
+                  <Bar dataKey="count" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
         </div>
       </div>
 
