@@ -129,35 +129,52 @@ export default function StatsPanel() {
 
         // --- Caption Performance Analytics ---
         
-        // Fetch captions with flavor and model info for aggregation
-        // We limit this to a representative sample for performance if needed, but let's try a full fetch for counts first
-        const { data: performanceRaw } = await supabase
+        // 1. Fetch data separately since relationships are complex
+        const { data: captionsRaw } = await supabase
           .from("captions")
-          .select("like_count, humor_flavor_id, humor_flavors(slug), llm_model_responses(llm_model_id, llm_models(name))")
-          // No limit for now, but in a real app you'd aggregate this on the DB side via RPC
+          .select("like_count, humor_flavor_id, caption_request_id")
         
+        const { data: flavorsRaw } = await supabase
+          .from("humor_flavors")
+          .select("id, slug")
+
+        const { data: responsesRaw } = await supabase
+          .from("llm_model_responses")
+          .select("caption_request_id, llm_models(name)")
+
+        // 2. Create Lookup Maps for performance
+        const flavorMap = new Map((flavorsRaw || []).map(f => [f.id, f.slug]))
+        const modelMap = new Map((responsesRaw || []).map(r => [r.caption_request_id, (r.llm_models as any)?.name]))
+
+        // 3. Process Data
+        const processedPerformance = (captionsRaw || []).map(cap => ({
+          ...cap,
+          flavorSlug: flavorMap.get(cap.humor_flavor_id) || "None",
+          modelName: modelMap.get(cap.caption_request_id) || "Unknown"
+        }))
+
         // A. Flavor Performance
         const flavorPerf = d3.rollups(
-          (performanceRaw || []).filter(c => c.humor_flavors),
+          processedPerformance.filter(c => c.humor_flavor_id),
           v => d3.mean(v, d => d.like_count) || 0,
-          d => (d.humor_flavors as any)?.slug || "Unknown"
+          d => d.flavorSlug
         )
         .map(([slug, avgLikes]) => ({ slug, avgLikes }))
         .sort((a, b) => b.avgLikes - a.avgLikes)
-        .slice(0, 10) // Top 10 flavors
+        .slice(0, 10)
 
         // B. Model Performance
         const modelPerf = d3.rollups(
-          (performanceRaw || []).filter(c => c.llm_model_responses),
+          processedPerformance.filter(c => c.modelName !== "Unknown"),
           v => d3.mean(v, d => d.like_count) || 0,
-          d => (d.llm_model_responses as any)?.llm_models?.name || "Unknown"
+          d => d.modelName
         )
         .map(([name, avgLikes]) => ({ name, avgLikes }))
         .sort((a, b) => b.avgLikes - a.avgLikes)
 
         // C. Rating Distribution
         const ratingDist = d3.rollups(
-          (performanceRaw || []),
+          processedPerformance,
           v => v.length,
           d => d.like_count
         )
